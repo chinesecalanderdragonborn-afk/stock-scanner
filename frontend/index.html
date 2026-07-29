@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock Scanner — Trade Ideas</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>📈</text></svg>" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span> ARCANE&nbsp;SCANNER
+      <span id="provider-tag" class="tag">…</span>
+    </div>
+    <div class="indices" id="indices"></div>
+    <div class="clockbox">
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="countdown">To close: <span id="countdown">--:--:--</span></div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- LEFT: scanners -->
+    <section class="col col-left">
+      <div class="panel" data-scan="momo_up">
+        <div class="panel-hd up">▲ 2-MIN MOMENTUM — UP</div>
+        <div class="scan-table" id="momo_up"></div>
+      </div>
+      <div class="panel" data-scan="momo_down">
+        <div class="panel-hd down">▼ 2-MIN MOMENTUM — DOWN</div>
+        <div class="scan-table" id="momo_down"></div>
+      </div>
+      <div class="panel" data-scan="gappers">
+        <div class="panel-hd">◆ GAP UP</div>
+        <div class="scan-table" id="gappers"></div>
+      </div>
+      <div class="panel" data-scan="low_float_runners">
+        <div class="panel-hd">✦ LOW-FLOAT RUNNERS</div>
+        <div class="scan-table" id="low_float_runners"></div>
+      </div>
+    </section>
+
+    <!-- CENTER: chart + focus -->
+    <section class="col col-center">
+      <div class="panel focus-panel">
+        <div class="focus-hd">
+          <span class="focus-sym" id="focus-sym">—</span>
+          <span class="focus-price" id="focus-price">—</span>
+          <span class="focus-chg" id="focus-chg">—</span>
+          <span class="focus-meta" id="focus-meta"></span>
+          <span class="tf-toggle">
+            <button data-tf="1m" class="tf active">1m</button>
+            <button data-tf="5m" class="tf">5m</button>
+          </span>
+        </div>
+        <canvas id="chart" class="chart"></canvas>
+        <div class="focus-stats" id="focus-stats"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd">◎ NEAR HIGH-OF-DAY (breakout watch)</div>
+        <div class="scan-table" id="near_hod"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT: news / halts -->
+    <section class="col col-right">
+      <div class="panel">
+        <div class="panel-hd">⚑ HALT SCANNER</div>
+        <div class="halt-table" id="halts"></div>
+      </div>
+      <div class="panel news-panel">
+        <div class="panel-hd">✉ NEWS WIRE</div>
+        <div class="news-feed" id="news"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span id="status">connecting…</span>
+    <span id="last-update"></span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
