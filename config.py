@@ -15,7 +15,9 @@ import os
 PROVIDER = os.getenv("SCANNER_PROVIDER", "auto").lower()
 
 # How often (seconds) the backend recomputes scans and pushes over the socket.
-REFRESH_SECONDS = float(os.getenv("SCANNER_REFRESH", "3"))
+# Live (Yahoo) uses a slower cadence to stay well under rate limits.
+REFRESH_SECONDS = float(os.getenv("SCANNER_REFRESH", "4"))
+LIVE_REFRESH_SECONDS = float(os.getenv("SCANNER_LIVE_REFRESH", "15"))
 
 # Server
 HOST = os.getenv("SCANNER_HOST", "0.0.0.0")
@@ -23,21 +25,22 @@ PORT = int(os.getenv("SCANNER_PORT", "8000"))
 
 
 # --- Ticker universe -------------------------------------------------------
-# The scanner watches this universe every refresh. In "simulated" mode these
-# are given synthetic-but-plausible float / price / volume profiles. Mix of
-# large caps (for indices/news flavour) and low-float small caps (the kind of
-# names momentum day-trading scanners surface).
+# The scanner watches this universe every refresh. These are all REAL, liquid,
+# actively-traded US tickers, so live (Yahoo) mode populates cleanly. It mixes
+# mega-caps with the volatile, high-volume names that momentum traders watch
+# (miners, EV, meme, AI small-caps). In "simulated" mode the same symbols get
+# synthetic-but-plausible float / price / volume profiles.
 UNIVERSE = [
-    # low-float / small-cap momentum candidates
-    "GWAV", "GSUN", "SOXS", "MUZ", "AGEN", "BTBT", "STAK", "REPL", "SXC",
-    "HLP", "NCRA", "PAL", "CASI", "BTDR", "JBDI", "AORZ", "DFNS", "SPRC",
-    "GENVR", "AGRZ", "CNET", "ANIX", "FVN", "HCAI", "CLDI", "CBZ", "AMIX",
-    # large / liquid names for context + news
-    "AAPL", "AMZN", "TSLA", "NVDA", "AMD", "F", "KO", "ENPH", "TFX", "PLTR",
+    # mega / large cap
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "AMD", "NFLX",
+    "AVGO", "PLTR", "UBER", "DIS", "BABA", "PYPL", "SHOP", "INTC", "BAC",
+    # high-beta / high-volume movers
+    "SOFI", "NIO", "MARA", "RIOT", "COIN", "HOOD", "PLUG", "LCID", "RIVN",
+    "GME", "AMC", "SMCI", "BBAI", "ENPH", "SNAP", "AAL", "CCL", "F", "T", "KO",
 ]
 
 # Symbols treated as "focus" / auto-watchlist highlights.
-FOCUS = ["GWAV", "GSUN", "BTBT", "JBDI"]
+FOCUS = ["NVDA", "TSLA", "AMD", "COIN"]
 
 
 # --- Screener thresholds ---------------------------------------------------

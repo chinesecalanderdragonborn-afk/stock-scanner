@@ -66,19 +66,27 @@ class Snapshot:
 snapshot = Snapshot()
 
 
+def _interval() -> float:
+    """Live data polls slower than the simulator to respect rate limits."""
+    return (config.LIVE_REFRESH_SECONDS if provider_name == "yahoo"
+            else config.REFRESH_SECONDS)
+
+
 @app.on_event("startup")
 async def _startup():
-    snapshot.refresh()
+    # Don't block startup on the first (possibly slow) live fetch — let the
+    # server come up immediately and populate on the background loop.
     asyncio.create_task(_refresh_loop())
 
 
 async def _refresh_loop():
+    interval = _interval()
     while True:
-        await asyncio.sleep(config.REFRESH_SECONDS)
         try:
             await asyncio.to_thread(snapshot.refresh)
         except Exception as e:  # noqa: BLE001
             print(f"[refresh] error: {e}")
+        await asyncio.sleep(interval)
 
 
 # --- REST -----------------------------------------------------------------

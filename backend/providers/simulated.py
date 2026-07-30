@@ -30,11 +30,11 @@ def _seed_for(symbol: str) -> int:
 # Names scripted to run today (gap up + intraday momentum) and roughly when
 # their spike peaks, as a fraction of the session.
 _RUNNERS = {
-    "GWAV": 0.55, "GSUN": 0.35, "BTBT": 0.60, "JBDI": 0.70,
-    "STAK": 0.45, "NCRA": 0.50, "SXC": 0.40,
+    "MARA": 0.55, "RIOT": 0.35, "COIN": 0.60, "SMCI": 0.70,
+    "BBAI": 0.45, "PLUG": 0.50, "GME": 0.40,
 }
 # Names scripted to fade / sell off.
-_FADERS = {"SOXS": 0.3, "MUZ": 0.5, "AGEN": 0.4}
+_FADERS = {"NIO": 0.3, "LCID": 0.5, "AMC": 0.4}
 
 _SECTORS = [
     "Technology", "Financial - Capital Markets", "Healthcare",
@@ -72,8 +72,9 @@ class SimulatedProvider:
     def _build_static(self) -> None:
         for sym in self.universe:
             rng = random.Random(_seed_for(sym))
-            is_big = sym in {"AAPL", "AMZN", "TSLA", "NVDA", "AMD", "F", "KO",
-                             "ENPH", "TFX", "PLTR"}
+            is_big = sym in {"AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",
+                             "TSLA", "AMD", "NFLX", "AVGO", "UBER", "DIS",
+                             "BABA", "PYPL", "SHOP", "INTC", "BAC", "KO", "T"}
             if is_big:
                 price = rng.uniform(25, 220)
                 float_shares = rng.uniform(300e6, 4e9)
