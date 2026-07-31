@@ -279,11 +279,21 @@ function tickClock() {
 }
 
 /* ---------- snapshot ---------- */
+let lastUpdated = -1;
 function applySnapshot(msg) {
+  if (!msg || msg.updated === lastUpdated) return;   // skip duplicates
+  lastUpdated = msg.updated;
   state.serverOffset = msg.server_time - Date.now() / 1000;
+
   const tag = $("provider-tag");
   tag.textContent = msg.provider === "yahoo" ? "LIVE" : "SIM";
   tag.className = "tag " + (msg.provider === "yahoo" ? "live" : "sim");
+
+  if (msg.loading) {
+    $("status").textContent = "● loading market data…";
+    $("status").className = "";
+    return;   // nothing to render yet
+  }
 
   Object.keys(SCAN_COLS).forEach((id) => renderScan(id, msg.scans[id]));
   renderHalts(msg.halts);
@@ -293,27 +303,49 @@ function applySnapshot(msg) {
   if (!state.focus) {
     // default to the strongest runner so the chart opens on something moving
     const first = (msg.scans.gappers[0] || msg.scans.momo_up[0] ||
-                   msg.scans.low_float_runners[0] || { symbol: msg.focus[0] });
-    if (first) selectFocus(first.symbol);
+                   msg.scans.low_float_runners[0] ||
+                   (msg.focus && { symbol: msg.focus[0] }));
+    if (first && first.symbol) selectFocus(first.symbol);
   } else {
-    // refresh focus header from latest scan rows if present
-    loadBars();
+    loadBars();   // keep the focused chart fresh
   }
-  $("last-update").textContent = "updated " + hhmmss(msg.updated);
+  $("last-update").textContent =
+    (msg.provider === "yahoo" ? "live · " : "sim · ") + "updated " + hhmmss(msg.updated);
 }
 
-/* ---------- websocket ---------- */
-function connect() {
+/* ---------- data transport: HTTP first, websocket for live push ---------- */
+async function fetchSnapshotOnce() {
+  try {
+    const r = await fetch("/api/snapshot", { cache: "no-store" });
+    if (r.ok) applySnapshot(await r.json());
+    return true;
+  } catch (e) { return false; }
+}
+
+let wsConnected = false;
+function connectWS() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const sock = new WebSocket(`${proto}://${location.host}/ws`);
+  let sock;
+  try { sock = new WebSocket(`${proto}://${location.host}/ws`); }
+  catch (e) { return; }
   const st = $("status");
-  sock.onopen = () => { st.textContent = "● live"; st.className = "ok"; };
+  sock.onopen = () => {
+    wsConnected = true;
+    st.textContent = "● live"; st.className = "ok";
+  };
   sock.onmessage = (ev) => applySnapshot(JSON.parse(ev.data));
   sock.onclose = () => {
-    st.textContent = "● disconnected — retrying"; st.className = "err";
-    setTimeout(connect, 2000);
+    wsConnected = false;
+    st.textContent = "● reconnecting…"; st.className = "err";
+    setTimeout(connectWS, 2000);
   };
-  sock.onerror = () => sock.close();
+  sock.onerror = () => { try { sock.close(); } catch (e) {} };
+}
+
+/* Polling fallback: if the websocket never connects (e.g. blocked by a
+ * firewall/proxy), keep the dashboard live over plain HTTP. */
+function startPollingFallback() {
+  setInterval(() => { if (!wsConnected) fetchSnapshotOnce(); }, 5000);
 }
 
 /* ---------- boot ---------- */
@@ -328,4 +360,14 @@ document.querySelectorAll(".tf").forEach((btn) => {
 window.addEventListener("resize", () => drawChart());
 setInterval(tickClock, 1000);
 tickClock();
-connect();
+
+// Render whatever's available right now over HTTP, then attach the live feed.
+$("status").textContent = "● loading…";
+fetchSnapshotOnce();
+connectWS();
+startPollingFallback();
+// keep retrying the first fetch until data arrives
+const bootPoll = setInterval(async () => {
+  if (lastUpdated > 0) { clearInterval(bootPoll); return; }
+  await fetchSnapshotOnce();
+}, 1500);

@@ -1,10 +1,12 @@
 """FastAPI app: REST endpoints + a websocket that streams scans live.
 
-Run with:  uvicorn backend.main:app --reload   (or ./run.sh)
+Run with:  python start.py        (recommended, cross-platform)
+       or  uvicorn backend.main:app
 """
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from pathlib import Path
 
@@ -19,9 +21,13 @@ from backend.providers.factory import make_provider
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
-app = FastAPI(title="Stock Scanner / Trade Ideas Dashboard")
-
 provider, provider_name = make_provider(config.UNIVERSE)
+
+
+def _interval() -> float:
+    """Live data polls slower than the simulator to respect rate limits."""
+    return (config.LIVE_REFRESH_SECONDS if provider_name == "yahoo"
+            else config.REFRESH_SECONDS)
 
 
 class Snapshot:
@@ -33,20 +39,30 @@ class Snapshot:
         self.news: list[dict] = []
         self.indices: list[dict] = []
         self.halts: list[dict] = []
+        self.bars: dict[str, list] = {}   # symbol -> list[Bar] (1-min session)
         self.updated: float = 0.0
+        self.error: str = ""
         self.provider = provider_name
 
     def refresh(self):
         quotes = provider.get_quotes(config.UNIVERSE)
         now = time.time()
-        rows = [m for q in quotes if (m := metrics_engine.compute(q, now))]
+        rows = []
+        bars = {}
+        for q in quotes:
+            m = metrics_engine.compute(q, now)
+            if m:
+                rows.append(m)
+                bars[q.symbol] = q.bars
         self.rows = rows
+        self.bars = bars
         self.scans = scanners.run_all(rows)
         self.news = [n.__dict__ for n in provider.get_news(30)]
         self.indices = [i.__dict__ for i in provider.get_indices()]
         halts_fn = getattr(provider, "get_halts", None)
         if halts_fn:
             self.halts = [h.__dict__ for h in halts_fn()]
+        self.error = "" if rows else "no market data returned"
         self.updated = now
 
     def payload(self) -> dict:
@@ -55,6 +71,8 @@ class Snapshot:
             "provider": self.provider,
             "updated": self.updated,
             "server_time": time.time(),
+            "loading": self.updated == 0.0,
+            "error": self.error,
             "scans": self.scans,
             "news": self.news,
             "indices": self.indices,
@@ -66,27 +84,29 @@ class Snapshot:
 snapshot = Snapshot()
 
 
-def _interval() -> float:
-    """Live data polls slower than the simulator to respect rate limits."""
-    return (config.LIVE_REFRESH_SECONDS if provider_name == "yahoo"
-            else config.REFRESH_SECONDS)
-
-
-@app.on_event("startup")
-async def _startup():
-    # Don't block startup on the first (possibly slow) live fetch — let the
-    # server come up immediately and populate on the background loop.
-    asyncio.create_task(_refresh_loop())
-
-
 async def _refresh_loop():
     interval = _interval()
     while True:
         try:
             await asyncio.to_thread(snapshot.refresh)
         except Exception as e:  # noqa: BLE001
+            snapshot.error = str(e)
             print(f"[refresh] error: {e}")
         await asyncio.sleep(interval)
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start the background refresh without blocking server startup, so the
+    # page is reachable immediately and fills in as data arrives.
+    task = asyncio.create_task(_refresh_loop())
+    yield
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+app = FastAPI(title="Stock Scanner / Trade Ideas Dashboard", lifespan=lifespan)
 
 
 # --- REST -----------------------------------------------------------------
@@ -119,14 +139,19 @@ def get_quote(symbol: str):
 
 @app.get("/api/bars/{symbol}")
 def get_bars(symbol: str, interval: str = "1m"):
-    """Return session candles for the chart. interval: 1m or 5m."""
-    quotes = provider.get_quotes([symbol.upper()])
-    if not quotes or not quotes[0].bars:
+    """Return session candles for the chart, served from the cached snapshot
+    (refreshed on the background loop) so opening a chart never triggers an
+    extra live fetch."""
+    sym = symbol.upper()
+    bars = snapshot.bars.get(sym)
+    if not bars:                       # fall back to an on-demand fetch
+        quotes = provider.get_quotes([sym])
+        bars = quotes[0].bars if quotes else None
+    if not bars:
         return JSONResponse({"error": "no data"}, status_code=404)
-    bars = quotes[0].bars
     if interval == "5m":
         bars = _resample(bars, 5)
-    return {"symbol": symbol.upper(), "interval": interval,
+    return {"symbol": sym, "interval": interval,
             "bars": [b.as_dict() for b in bars]}
 
 

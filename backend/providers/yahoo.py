@@ -99,13 +99,19 @@ class YahooProvider:
             self._refresh_meta(symbols)
 
     # -- provider API ------------------------------------------------------
-    def get_quotes(self, symbols: list[str]) -> list[Quote]:
-        yf = self._yf
-        self._ensure_meta(symbols)
-        data = yf.download(
-            tickers=" ".join(symbols), period="1d", interval="1m",
+    def _download(self, symbols, period, interval):
+        return self._yf.download(
+            tickers=" ".join(symbols), period=period, interval=interval,
             group_by="ticker", threads=True, progress=False, auto_adjust=False,
         )
+
+    def get_quotes(self, symbols: list[str]) -> list[Quote]:
+        self._ensure_meta(symbols)
+        # Intraday first; if the market's been closed a while and 1-min data is
+        # empty, fall back to coarser bars so the dashboard still populates.
+        data = self._download(symbols, "1d", "1m")
+        if data is None or getattr(data, "empty", True):
+            data = self._download(symbols, "5d", "5m")
         quotes: list[Quote] = []
         for sym in symbols:
             try:

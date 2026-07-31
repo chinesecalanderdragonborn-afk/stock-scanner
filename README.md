@@ -37,20 +37,39 @@ it.
 
 ---
 
-## Quick start
+## Quick start — the easy way
+
+**Windows:** double-click **`Start-Windows.bat`**
+**macOS:** double-click **`Start-Mac.command`**
+
+That's it — it installs what it needs, starts the server, and opens the
+dashboard in your browser automatically.
+
+### Or from a terminal (any OS)
 
 ```bash
-pip install -r requirements.txt
-./run.sh                       # → http://localhost:8000
+python start.py          # installs deps, launches, opens the browser
 ```
 
-Or force the offline demo (no network needed):
+Force the always-lively offline demo (no internet needed):
 
 ```bash
-SCANNER_PROVIDER=simulated ./run.sh
+# macOS / Linux
+SCANNER_PROVIDER=simulated python start.py
+# Windows PowerShell
+$env:SCANNER_PROVIDER="simulated"; python start.py
 ```
 
-Then open **http://localhost:8000**.
+The dashboard is served at **http://localhost:8000**. In the top-left, the tag
+reads **LIVE** when it's pulling real market data and **SIM** when using the
+simulator.
+
+> **About the data:** live mode uses Yahoo Finance (no API key). It's real
+> market data refreshed every ~15s. Yahoo's free intraday feed carries a small
+> delay (it isn't tick-by-tick), and the scanners naturally look busiest
+> **during US market hours** (9:30 AM–4:00 PM ET, weekdays). For true
+> tick-level real-time you'd add a paid feed (Polygon/Finnhub) — the provider
+> layer makes that a one-file change.
 
 ---
 
