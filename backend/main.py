@@ -73,6 +73,7 @@ class Snapshot:
             "server_time": time.time(),
             "loading": self.updated == 0.0,
             "error": self.error,
+            "rows": [m.as_dict() for m in self.rows],
             "scans": self.scans,
             "news": self.news,
             "indices": self.indices,

@@ -1,373 +1,238 @@
-/* Trade-ideas dashboard front-end.
- * - Subscribes to /ws for live scan snapshots.
- * - Renders scanner tables, news, halts, index strip.
- * - Draws a candlestick chart for the focused symbol on a <canvas>.
- * No external libraries.
+/* SCOUT front-end — minimal momentum scanner driven by the live backend.
+ * Loads over plain HTTP first, upgrades to a websocket for live push, and
+ * falls back to HTTP polling if the socket is unavailable. No dependencies.
  */
 "use strict";
 
-const state = {
-  focus: null,
-  timeframe: "1m",
-  bars: [],
-  lastRows: {},        // per-scan: symbol -> mom value, for flash detection
-  seenNews: new Set(),
-  serverOffset: 0,     // server_time - client_time
-};
-
-/* ---------- helpers ---------- */
 const $ = (id) => document.getElementById(id);
-const fmt = (n, d = 2) =>
-  n === undefined || n === null || isNaN(n) ? "—" : Number(n).toFixed(d);
-function fmtVol(v) {
+const fmt = (n, d = 2) => (n == null || isNaN(n)) ? "—" : Number(n).toFixed(d);
+const sgn = (v) => (v > 0 ? "+" : "");
+function fvol(v) {
   if (v >= 1e9) return (v / 1e9).toFixed(2) + "B";
   if (v >= 1e6) return (v / 1e6).toFixed(2) + "M";
   if (v >= 1e3) return (v / 1e3).toFixed(1) + "K";
   return String(Math.round(v || 0));
 }
-const cls = (v) => (v > 0 ? "pos" : v < 0 ? "neg" : "muted");
-const sign = (v) => (v > 0 ? "+" : "");
-function hhmmss(epoch) {
-  const d = new Date(epoch * 1000);
-  return d.toLocaleTimeString("en-US", { hour12: false });
-}
+function hhmmss(t) { return new Date(t * 1000).toLocaleTimeString("en-US", { hour12: false }); }
 
-/* ---------- scan tables ---------- */
-const SCAN_COLS = {
-  momo_up: ["mom_2min_pct", "price", "change_pct", "rvol", "volume"],
-  momo_down: ["mom_2min_pct", "price", "change_pct", "rvol", "volume"],
-  gappers: ["gap_pct", "price", "change_pct", "rvol", "float_shares"],
-  low_float_runners: ["change_pct", "price", "float_shares", "float_rotation", "rvol"],
-  near_hod: ["dist_from_hod_pct", "price", "change_pct", "atr_hod", "rvol"],
-};
-const COL_HEAD = {
-  mom_2min_pct: "2Min%", price: "Price", change_pct: "Chg%", rvol: "RVol",
-  volume: "Vol", gap_pct: "Gap%", float_shares: "Float", atr_hod: "AtrHoD",
-  float_rotation: "Rot", dist_from_hod_pct: "%HoD",
+const state = {
+  rows: [], bySym: {}, focus: null, tab: "Trade Ideas", tf: "1m",
+  bars: [], serverOffset: 0, provider: null, lastUpdated: -1, wsOK: false,
 };
 
-function cell(row, key) {
-  let v = row[key], text, klass = "";
-  switch (key) {
-    case "volume": text = fmtVol(v); break;
-    case "float_shares": text = fmtVol(v); break;
-    case "price": text = fmt(v, v < 1 ? 3 : 2); break;
-    case "rvol": text = fmt(v, 1) + "×"; if (v >= 3) klass = "cell-up"; break;
-    case "float_rotation": text = fmt(v, 1) + "×"; break;
-    case "mom_2min_pct":
-    case "change_pct":
-    case "gap_pct":
-      text = sign(v) + fmt(v, 1) + "%";
-      klass = v > 0 ? "cell-up" : v < 0 ? "cell-down" : "";
-      break;
-    case "dist_from_hod_pct":
-      text = fmt(v, 2) + "%"; klass = v >= -0.2 ? "cell-up" : ""; break;
-    case "atr_hod": text = fmt(v, 2); break;
-    default: text = fmt(v);
-  }
-  return `<td class="${klass}">${text}</td>`;
+/* ---- signal state derived from metrics ---- */
+function signal(m) {
+  if (m.halted) return "HALT";
+  if (m.change_pct > 0 && Math.abs(m.dist_from_hod_pct) <= 0.6) return "HOD";
+  if (m.mom_2min_pct >= 0.4 && m.change_pct > 0) return "RUN";
+  if (m.change_pct < 0 && m.mom_2min_pct < 0) return "FADE";
+  return m.change_pct >= 0 ? "UP" : "DN";
 }
 
-function renderScan(id, rows) {
-  const cols = SCAN_COLS[id];
-  const el = $(id);
-  if (!rows || !rows.length) {
-    el.innerHTML = `<div class="halt-empty">— no signals —</div>`;
+/* ---- tab filters (computed from the full row set) ---- */
+const TABS = {
+  "Trade Ideas": (rs) => rs.filter((m) => m.price >= 0.5 && m.price <= 2000)
+      .map((m) => [m, Math.abs(m.change_pct) * 0.4 + m.mom_2min_pct * 3 + (m.rvol - 1) * 8])
+      .sort((a, b) => b[1] - a[1]).map((x) => x[0]),
+  "Momentum": (rs) => rs.filter((m) => Math.abs(m.mom_2min_pct) > 0.05).sort((a, b) => b.mom_2min_pct - a.mom_2min_pct),
+  "Gappers": (rs) => rs.filter((m) => m.gap_pct >= 2).sort((a, b) => b.gap_pct - a.gap_pct),
+  "Low Float": (rs) => rs.filter((m) => m.float_shares > 0 && m.float_shares <= 50e6 && m.change_pct > 0).sort((a, b) => b.change_pct - a.change_pct),
+  "Near HOD": (rs) => rs.filter((m) => m.change_pct > 0 && Math.abs(m.dist_from_hod_pct) <= 1).sort((a, b) => b.dist_from_hod_pct - a.dist_from_hod_pct),
+  "Halted": (rs) => rs.filter((m) => m.halted),
+};
+
+/* ---- render: tabs + table ---- */
+function renderTabs() {
+  const el = $("tabs"); el.innerHTML = "";
+  Object.keys(TABS).forEach((name) => {
+    const b = document.createElement("button");
+    b.className = "tab" + (name === state.tab ? " active" : "");
+    b.textContent = name;
+    b.onclick = () => { state.tab = name; renderTabs(); renderTable(); };
+    el.appendChild(b);
+  });
+}
+function renderTable() {
+  const rows = TABS[state.tab](state.rows).slice(0, 16);
+  const tb = $("rows"); tb.innerHTML = "";
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">— no names match this filter right now —</td></tr>';
     return;
   }
-  const prev = state.lastRows[id] || {};
-  const now = {};
-  const head = `<tr><th>Sym</th>${cols
-    .map((c) => `<th>${COL_HEAD[c]}</th>`).join("")}</tr>`;
-  const body = rows.map((r) => {
-    const key = cols[0];
-    now[r.symbol] = r[key];
-    const flash = prev[r.symbol] !== undefined && prev[r.symbol] !== r[key];
-    return `<tr class="${flash ? "flash" : ""}">
-      <td class="sym" data-sym="${r.symbol}">${r.symbol}</td>
-      ${cols.map((c) => cell(r, c)).join("")}
-    </tr>`;
-  }).join("");
-  el.innerHTML = `<table>${head}${body}</table>`;
-  state.lastRows[id] = now;
-  el.querySelectorAll(".sym").forEach((td) =>
-    td.addEventListener("click", () => selectFocus(td.dataset.sym)));
-}
-
-/* ---------- halts & news ---------- */
-function renderHalts(halts) {
-  const el = $("halts");
-  if (!halts || !halts.length) {
-    el.innerHTML = `<div class="halt-empty">— no active halts —</div>`;
-    return;
+  for (const m of rows) {
+    const s = signal(m);
+    const tr = document.createElement("tr");
+    if (m.symbol === state.focus) tr.className = "sel";
+    const chgCls = m.change_pct > 0 ? "up" : m.change_pct < 0 ? "down" : "muted";
+    tr.innerHTML = `<td class="sym">${m.symbol}</td>
+      <td class="mono">${fmt(m.price, m.price < 1 ? 3 : 2)}</td>
+      <td class="mono ${chgCls}"><span class="pill ${m.change_pct > 0 ? "pos" : m.change_pct < 0 ? "neg" : ""}">${sgn(m.change_pct)}${fmt(m.change_pct, 1)}%</span></td>
+      <td class="mono">${fmt(m.rvol, 1)}×</td>
+      <td class="mono sub">${m.float_shares ? fvol(m.float_shares) : "—"}</td>
+      <td><span class="state s-${s}">${s}</span></td>`;
+    tr.onclick = () => selectFocus(m.symbol);
+    tb.appendChild(tr);
   }
-  el.innerHTML = halts.map((h) => `
-    <div class="halt-row">
-      <span class="hsym" data-sym="${h.symbol}">${h.symbol}</span>
-      <span class="hreason">${h.reason}</span>
-      <span class="muted">${fmt(h.price, 2)}</span>
-    </div>`).join("");
-  el.querySelectorAll(".hsym").forEach((s) =>
-    s.addEventListener("click", () => selectFocus(s.dataset.sym)));
 }
 
-function renderNews(news) {
-  const el = $("news");
-  if (!news || !news.length) {
-    el.innerHTML = `<div class="news-empty">— wire quiet —</div>`;
-    return;
-  }
-  el.innerHTML = news.map((n) => {
-    const isNew = !state.seenNews.has(n.t + n.headline);
-    state.seenNews.add(n.t + n.headline);
-    return `<div class="news-item ${isNew ? "new" : ""}">
-      <span class="ntime">${hhmmss(n.t)}</span>
-      <span class="nsym" data-sym="${n.symbol}">${n.symbol}</span>
-      <span class="nhead">${n.headline}</span>
-    </div>`;
-  }).join("");
-  el.querySelectorAll(".nsym").forEach((s) =>
-    s.addEventListener("click", () => selectFocus(s.dataset.sym)));
-}
-
-function renderIndices(indices) {
-  $("indices").innerHTML = indices.map((i) => `
-    <div class="idx">
-      <span class="nm">${i.name}</span>
-      <span class="vl ${cls(i.change_pct)}">${sign(i.change_pct)}${fmt(i.change_pct, 2)}%</span>
-    </div>`).join("");
-}
-
-/* ---------- focus panel + chart ---------- */
+/* ---- render: detail + chart ---- */
 async function selectFocus(sym) {
   state.focus = sym;
+  renderTable();
+  renderDetailHeader();
   await loadBars();
 }
-
+function renderDetailHeader() {
+  const m = state.bySym[state.focus];
+  if (!m) return;
+  $("cSym").textContent = m.symbol;
+  $("cPrice").textContent = fmt(m.price, m.price < 1 ? 3 : 2);
+  const cc = $("cChg");
+  cc.textContent = `${sgn(m.change_pct)}${fmt(m.change_pct, 2)}%`;
+  cc.className = "cc mono " + (m.change_pct > 0 ? "up" : m.change_pct < 0 ? "down" : "muted");
+  $("cMeta").textContent =
+    `${m.exchange || m.sector || ""} · Float ${m.float_shares ? fvol(m.float_shares) : "—"} · RVol ${fmt(m.rvol, 1)}× · Rot ${fmt(m.float_rotation, 2)}×`;
+  const st = [["VWAP", fmt(m.vwap, 2)], ["HOD", fmt(m.hod, 2)], ["LOD", fmt(m.lod, 2)],
+    ["ATR", fmt(m.atr, 3)], ["Gap%", sgn(m.gap_pct) + fmt(m.gap_pct, 1)],
+    ["2-Min", sgn(m.mom_2min_pct) + fmt(m.mom_2min_pct, 1) + "%"]];
+  $("stats").innerHTML = st.map(([k, v]) =>
+    `<div class="stat"><div class="k">${k}</div><div class="v mono">${v}</div></div>`).join("");
+}
 async function loadBars() {
   if (!state.focus) return;
   try {
-    const r = await fetch(`/api/bars/${state.focus}?interval=${state.timeframe}`);
-    if (!r.ok) return;
-    const data = await r.json();
-    state.bars = data.bars;
-    const q = await (await fetch(`/api/quote/${state.focus}`)).json();
-    updateFocusHeader(q);
+    const r = await fetch(`/api/bars/${state.focus}?interval=${state.tf}`, { cache: "no-store" });
+    if (!r.ok) { state.bars = []; drawChart(); return; }
+    state.bars = (await r.json()).bars || [];
     drawChart();
   } catch (e) { /* ignore */ }
 }
-
-function updateFocusHeader(q) {
-  if (!q || q.error) return;
-  $("focus-sym").textContent = q.symbol;
-  $("focus-price").textContent = fmt(q.price, q.price < 1 ? 3 : 2);
-  const chg = $("focus-chg");
-  chg.textContent = `${sign(q.change_pct)}${fmt(q.change_pct, 2)}%`;
-  chg.className = "focus-chg " + cls(q.change_pct);
-  $("focus-meta").textContent =
-    `${q.exchange} · Float ${fmtVol(q.float_shares)} · RVol ${fmt(q.rvol, 1)}×`;
-  const stats = [
-    ["VWAP", fmt(q.vwap, 2)], ["HOD", fmt(q.hod, 2)], ["LOD", fmt(q.lod, 2)],
-    ["ATR", fmt(q.atr, 3)], ["Gap%", sign(q.gap_pct) + fmt(q.gap_pct, 1)],
-    ["Rot", fmt(q.float_rotation, 1) + "×"],
-  ];
-  $("focus-stats").innerHTML = stats.map(([k, v]) =>
-    `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
-}
-
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 function drawChart() {
-  const canvas = $("chart");
-  const bars = state.bars;
+  const cv = $("chart"), wrap = cv.parentElement, bars = state.bars;
   const dpr = window.devicePixelRatio || 1;
-  const W = canvas.clientWidth, H = canvas.clientHeight;
-  canvas.width = W * dpr; canvas.height = H * dpr;
-  const ctx = canvas.getContext("2d");
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, W, H);
-  if (!bars || !bars.length) return;
-
-  const padR = 52, padB = 34, padT = 8, padL = 6;
-  const plotW = W - padR - padL, plotH = H - padB - padT;
-  const volH = plotH * 0.22, priceH = plotH - volH - 6;
-
-  let hi = -Infinity, lo = Infinity, maxV = 0;
-  for (const b of bars) { hi = Math.max(hi, b.h); lo = Math.min(lo, b.l); maxV = Math.max(maxV, b.v); }
-  const pad = (hi - lo) * 0.08 || 1;
-  hi += pad; lo -= pad;
-
-  const x = (i) => padL + (i + 0.5) * (plotW / bars.length);
-  const y = (p) => padT + (1 - (p - lo) / (hi - lo)) * priceH;
-  const vy = (v) => padT + priceH + 6 + (1 - v / maxV) * volH;
-
-  // grid + price axis
-  ctx.strokeStyle = "#161c28"; ctx.fillStyle = "#5a6578";
-  ctx.font = "9px monospace"; ctx.textAlign = "left";
-  const steps = 5;
-  for (let i = 0; i <= steps; i++) {
-    const p = lo + (hi - lo) * (i / steps);
-    const yy = y(p);
-    ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + plotW, yy); ctx.stroke();
-    ctx.fillText(p.toFixed(p < 1 ? 3 : 2), padL + plotW + 4, yy + 3);
-  }
-
-  // VWAP line
-  let pv = 0, cv = 0;
-  const vwapPts = bars.map((b) => {
-    const tp = (b.h + b.l + b.c) / 3; pv += tp * b.v; cv += b.v;
-    return cv ? pv / cv : b.c;
-  });
-  ctx.strokeStyle = "#f5a623"; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
-  ctx.beginPath();
-  vwapPts.forEach((p, i) => { const xx = x(i), yy = y(p); i ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); });
-  ctx.stroke(); ctx.setLineDash([]);
-
-  // candles + volume
-  const cw = Math.max(1, (plotW / bars.length) * 0.62);
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const x = cv.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
+  if (!bars.length) return;
+  const padR = 54, padB = 22, padT = 10, padL = 8;
+  const pw = W - padR - padL, ph = H - padB - padT, volH = ph * 0.20, priceH = ph - volH - 6;
+  let hi = -1e9, lo = 1e9, mv = 0;
+  for (const b of bars) { hi = Math.max(hi, b.h); lo = Math.min(lo, b.l); mv = Math.max(mv, b.v); }
+  const pad = (hi - lo) * 0.08 || 1; hi += pad; lo -= pad;
+  const px = (i) => padL + (i + 0.5) * (pw / bars.length);
+  const py = (p) => padT + (1 - (p - lo) / (hi - lo)) * priceH;
+  const vy = (v) => padT + priceH + 6 + (1 - v / mv) * volH;
+  const cUp = css("--up"), cDn = css("--down"), cLine = css("--line"), cMut = css("--faint"), cAcc = css("--accent"), cBg = css("--bg");
+  x.strokeStyle = cLine; x.fillStyle = cMut; x.font = '10px "SF Mono",Menlo,monospace'; x.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const p = lo + (hi - lo) * i / 4, yy = py(p); x.globalAlpha = .5; x.beginPath(); x.moveTo(padL, yy); x.lineTo(padL + pw, yy); x.stroke(); x.globalAlpha = 1; x.fillText(p.toFixed(p < 1 ? 3 : 2), padL + pw + 6, yy + 3); }
+  let pv = 0, cv2 = 0;
+  const vw = bars.map((b) => { const tp = (b.h + b.l + b.c) / 3; pv += tp * b.v; cv2 += b.v; return cv2 ? pv / cv2 : b.c; });
+  x.strokeStyle = cAcc; x.globalAlpha = .85; x.setLineDash([4, 3]); x.beginPath();
+  vw.forEach((p, i) => { const xx = px(i), yy = py(p); i ? x.lineTo(xx, yy) : x.moveTo(xx, yy); }); x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
+  const cw = Math.max(1, (pw / bars.length) * 0.62);
   bars.forEach((b, i) => {
-    const up = b.c >= b.o;
-    const color = up ? "#21d07a" : "#ff4d5e";
-    const xx = x(i);
-    // volume
-    ctx.fillStyle = up ? "rgba(33,208,122,0.35)" : "rgba(255,77,94,0.35)";
-    const vY = vy(b.v), vBot = padT + priceH + 6 + volH;
-    ctx.fillRect(xx - cw / 2, vY, cw, vBot - vY);
-    // wick
-    ctx.strokeStyle = color; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(xx, y(b.h)); ctx.lineTo(xx, y(b.l)); ctx.stroke();
-    // body
-    ctx.fillStyle = color;
-    const yo = y(b.o), yc = y(b.c);
-    ctx.fillRect(xx - cw / 2, Math.min(yo, yc), cw, Math.max(1, Math.abs(yc - yo)));
+    const up = b.c >= b.o, col = up ? cUp : cDn, xx = px(i);
+    x.globalAlpha = .28; x.fillStyle = col; const vY = vy(b.v), vB = padT + priceH + 6 + volH; x.fillRect(xx - cw / 2, vY, cw, vB - vY); x.globalAlpha = 1;
+    x.strokeStyle = col; x.beginPath(); x.moveTo(xx, py(b.h)); x.lineTo(xx, py(b.l)); x.stroke();
+    x.fillStyle = col; const yo = py(b.o), yc = py(b.c); x.fillRect(xx - cw / 2, Math.min(yo, yc), cw, Math.max(1, Math.abs(yc - yo)));
   });
-
-  // last price line
-  const last = bars[bars.length - 1].c;
-  const upDay = last >= bars[0].o;
-  ctx.strokeStyle = upDay ? "#21d07a" : "#ff4d5e"; ctx.setLineDash([2, 2]);
-  ctx.beginPath(); ctx.moveTo(padL, y(last)); ctx.lineTo(padL + plotW, y(last)); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = upDay ? "#21d07a" : "#ff4d5e";
-  ctx.fillRect(padL + plotW, y(last) - 7, padR, 14);
-  ctx.fillStyle = "#06080c"; ctx.textAlign = "left";
-  ctx.fillText(last.toFixed(last < 1 ? 3 : 2), padL + plotW + 4, y(last) + 3);
-
-  // time axis (a few labels)
-  ctx.fillStyle = "#5a6578"; ctx.textAlign = "center";
-  const labels = 5;
-  for (let i = 0; i <= labels; i++) {
-    const idx = Math.min(bars.length - 1, Math.round((bars.length - 1) * (i / labels)));
-    ctx.fillText(new Date(bars[idx].t * 1000)
-      .toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" }),
-      x(idx), H - padB + 14);
-  }
+  const last = bars[bars.length - 1].c, upDay = last >= bars[0].o, col = upDay ? cUp : cDn;
+  x.strokeStyle = col; x.globalAlpha = .6; x.setLineDash([2, 2]); x.beginPath(); x.moveTo(padL, py(last)); x.lineTo(padL + pw, py(last)); x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
+  x.fillStyle = col; x.fillRect(padL + pw, py(last) - 8, padR, 16); x.fillStyle = cBg; x.fillText(last.toFixed(last < 1 ? 3 : 2), padL + pw + 6, py(last) + 3);
 }
 
-/* ---------- clock ---------- */
+/* ---- indices / news ---- */
+function renderIdx(indices) {
+  $("idx").innerHTML = (indices || []).map((i) => {
+    const cls = i.change_pct >= 0 ? "up" : "down";
+    return `<div class="i"><span class="n">${i.name}</span><span class="v mono ${cls}">${sgn(i.change_pct)}${fmt(i.change_pct, 2)}%</span></div>`;
+  }).join("");
+}
+function renderNews(news) {
+  const el = $("news");
+  if (!news || !news.length) { el.innerHTML = '<div class="row muted">— wire quiet —</div>'; return; }
+  el.innerHTML = news.slice(0, 3).map((n) =>
+    `<div class="row"><span class="tm mono">${hhmmss(n.t)}</span><span class="sy" data-sym="${n.symbol}">${n.symbol}</span><span class="hd">${n.headline}</span></div>`).join("");
+  el.querySelectorAll(".sy").forEach((s) => s.onclick = () => selectFocus(s.dataset.sym));
+}
+
+/* ---- clock ---- */
 function serverNow() { return Date.now() / 1000 + state.serverOffset; }
-function tickClock() {
-  const now = serverNow();
-  $("clock").textContent = hhmmss(now);
-  // countdown to 16:00 local
-  const d = new Date(now * 1000);
-  const close = new Date(d); close.setHours(16, 0, 0, 0);
-  let secs = Math.floor((close - d) / 1000);
-  if (secs < 0) secs = 0;
-  const h = String(Math.floor(secs / 3600)).padStart(2, "0");
-  const m = String(Math.floor((secs % 3600) / 60)).padStart(2, "0");
-  const s = String(secs % 60).padStart(2, "0");
-  $("countdown").textContent = `${h}:${m}:${s}`;
+function clock() {
+  $("clock").textContent = hhmmss(serverNow());
+  const d = new Date(serverNow() * 1000), cl = new Date(d); cl.setHours(16, 0, 0, 0);
+  let s = Math.max(0, Math.floor((cl - d) / 1000));
+  $("cd").textContent = `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}`;
 }
 
-/* ---------- snapshot ---------- */
-let lastUpdated = -1;
+/* ---- snapshot ---- */
 function applySnapshot(msg) {
-  if (!msg || msg.updated === lastUpdated) return;   // skip duplicates
-  lastUpdated = msg.updated;
+  if (!msg || msg.updated === state.lastUpdated) return;
+  state.lastUpdated = msg.updated;
   state.serverOffset = msg.server_time - Date.now() / 1000;
+  state.provider = msg.provider;
+  const mode = $("mode");
+  mode.textContent = msg.provider === "yahoo" ? "LIVE" : "SIM";
+  mode.className = "chip " + (msg.provider === "yahoo" ? "live" : "sim");
 
-  const tag = $("provider-tag");
-  tag.textContent = msg.provider === "yahoo" ? "LIVE" : "SIM";
-  tag.className = "tag " + (msg.provider === "yahoo" ? "live" : "sim");
+  if (msg.loading) { $("status").textContent = "● loading market data…"; $("status").className = ""; return; }
 
-  if (msg.loading) {
-    $("status").textContent = "● loading market data…";
-    $("status").className = "";
-    return;   // nothing to render yet
-  }
-
-  Object.keys(SCAN_COLS).forEach((id) => renderScan(id, msg.scans[id]));
-  renderHalts(msg.halts);
+  state.rows = msg.rows || [];
+  state.bySym = {}; state.rows.forEach((m) => (state.bySym[m.symbol] = m));
+  renderTable();
+  renderIdx(msg.indices);
   renderNews(msg.news);
-  renderIndices(msg.indices);
 
-  if (!state.focus) {
-    // default to the strongest runner so the chart opens on something moving
-    const first = (msg.scans.gappers[0] || msg.scans.momo_up[0] ||
-                   msg.scans.low_float_runners[0] ||
-                   (msg.focus && { symbol: msg.focus[0] }));
-    if (first && first.symbol) selectFocus(first.symbol);
-  } else {
-    loadBars();   // keep the focused chart fresh
+  if (!state.focus && state.rows.length) {
+    const ideas = TABS["Trade Ideas"](state.rows);
+    selectFocus((ideas[0] || state.rows[0]).symbol);
+  } else if (state.focus) {
+    renderDetailHeader();
+    loadBars();
   }
-  $("last-update").textContent =
+  $("lastUpdate").textContent =
     (msg.provider === "yahoo" ? "live · " : "sim · ") + "updated " + hhmmss(msg.updated);
 }
 
-/* ---------- data transport: HTTP first, websocket for live push ---------- */
+/* ---- transport ---- */
 async function fetchSnapshotOnce() {
-  try {
-    const r = await fetch("/api/snapshot", { cache: "no-store" });
-    if (r.ok) applySnapshot(await r.json());
-    return true;
-  } catch (e) { return false; }
+  try { const r = await fetch("/api/snapshot", { cache: "no-store" }); if (r.ok) applySnapshot(await r.json()); return true; }
+  catch (e) { return false; }
 }
-
-let wsConnected = false;
 function connectWS() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   let sock;
-  try { sock = new WebSocket(`${proto}://${location.host}/ws`); }
-  catch (e) { return; }
+  try { sock = new WebSocket(`${proto}://${location.host}/ws`); } catch (e) { return; }
   const st = $("status");
-  sock.onopen = () => {
-    wsConnected = true;
-    st.textContent = "● live"; st.className = "ok";
-  };
+  sock.onopen = () => { state.wsOK = true; st.textContent = "● live"; st.className = "ok"; };
   sock.onmessage = (ev) => applySnapshot(JSON.parse(ev.data));
-  sock.onclose = () => {
-    wsConnected = false;
-    st.textContent = "● reconnecting…"; st.className = "err";
-    setTimeout(connectWS, 2000);
-  };
+  sock.onclose = () => { state.wsOK = false; st.textContent = "● reconnecting…"; st.className = "err"; setTimeout(connectWS, 2000); };
   sock.onerror = () => { try { sock.close(); } catch (e) {} };
 }
 
-/* Polling fallback: if the websocket never connects (e.g. blocked by a
- * firewall/proxy), keep the dashboard live over plain HTTP. */
-function startPollingFallback() {
-  setInterval(() => { if (!wsConnected) fetchSnapshotOnce(); }, 5000);
-}
-
-/* ---------- boot ---------- */
-document.querySelectorAll(".tf").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tf").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    state.timeframe = btn.dataset.tf;
-    loadBars();
-  });
+/* ---- boot ---- */
+$("tf").querySelectorAll("button").forEach((b) => b.onclick = () => {
+  $("tf").querySelectorAll("button").forEach((x) => x.classList.remove("on"));
+  b.classList.add("on"); state.tf = b.dataset.tf; loadBars();
 });
-window.addEventListener("resize", () => drawChart());
-setInterval(tickClock, 1000);
-tickClock();
-
-// Render whatever's available right now over HTTP, then attach the live feed.
+function initTheme() {
+  let t = null; try { t = localStorage.getItem("scout-theme"); } catch (e) {}
+  if (t) document.documentElement.setAttribute("data-theme", t);
+  $("themeBtn").onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    const isDark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = isDark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("scout-theme", next); } catch (e) {}
+    drawChart();
+  };
+}
+window.addEventListener("resize", drawChart);
+initTheme(); renderTabs(); clock();
+setInterval(clock, 1000);
 $("status").textContent = "● loading…";
 fetchSnapshotOnce();
 connectWS();
-startPollingFallback();
-// keep retrying the first fetch until data arrives
-const bootPoll = setInterval(async () => {
-  if (lastUpdated > 0) { clearInterval(bootPoll); return; }
-  await fetchSnapshotOnce();
-}, 1500);
+setInterval(() => { if (!state.wsOK) fetchSnapshotOnce(); }, 5000);
+const bootPoll = setInterval(async () => { if (state.lastUpdated > 0) { clearInterval(bootPoll); return; } await fetchSnapshotOnce(); }, 1500);

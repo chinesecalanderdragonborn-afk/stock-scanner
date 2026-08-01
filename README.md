@@ -37,17 +37,19 @@ it.
 
 ---
 
-## Two ways to run it
+## Two ways to run it — same minimal design either way
 
 **1. Instant / zero-install — `standalone.html`**
 Just **double-click `standalone.html`** and it opens in your browser. No Python,
-no terminal, no setup. It's a clean, minimal single-file dashboard that runs the
-market **simulator** in the browser — perfect for a always-lively demo you can
-open anywhere (or host as a link).
+no terminal, no setup. This single file runs the market **simulator** in the
+browser — an always-lively demo you can open anywhere or host as a link. (A
+purely in-browser page can't reach a live market feed, so this one is
+simulated.)
 
 **2. Live market data — the Python app**
-For real quotes from Yahoo Finance, run the full app below. Same scanners, with
-live data.
+Run the app below for the **exact same clean dashboard, driven by real Yahoo
+Finance quotes** (no API key). The tag in the top-left reads **LIVE** instead of
+**SIM**.
 
 ---
 
