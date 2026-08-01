@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>%F0%9F%93%88</text></svg>" />
+</head>
+<body>
+<title>SCOUT — Momentum Scanner</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5;
+    --line: #e5e8ee; --line-strong: #d4d9e2;
+    --text: #14171d; --muted: #6a7280; --faint: #9aa2b0;
+    --accent: #b9721a; --accent-soft: rgba(185,114,26,.12);
+    --up: #157f45; --up-soft: rgba(21,127,69,.10);
+    --down: #cc3550; --down-soft: rgba(204,53,80,.10);
+    --shadow: 0 1px 2px rgba(20,23,29,.05), 0 8px 24px rgba(20,23,29,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0c10; --surface: #111419; --surface-2: #161a21;
+      --line: #1e232d; --line-strong: #2a303c;
+      --text: #e8ecf3; --muted: #828c9c; --faint: #5b6472;
+      --accent: #e8a13c; --accent-soft: rgba(232,161,60,.14);
+      --up: #3fb950; --up-soft: rgba(63,185,80,.13);
+      --down: #f0546a; --down-soft: rgba(240,84,106,.13);
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5;
+    --line: #e5e8ee; --line-strong: #d4d9e2;
+    --text: #14171d; --muted: #6a7280; --faint: #9aa2b0;
+    --accent: #b9721a; --accent-soft: rgba(185,114,26,.12);
+    --up: #157f45; --up-soft: rgba(21,127,69,.10);
+    --down: #cc3550; --down-soft: rgba(204,53,80,.10);
+    --shadow: 0 1px 2px rgba(20,23,29,.05), 0 8px 24px rgba(20,23,29,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0c10; --surface: #111419; --surface-2: #161a21;
+    --line: #1e232d; --line-strong: #2a303c;
+    --text: #e8ecf3; --muted: #828c9c; --faint: #5b6472;
+    --accent: #e8a13c; --accent-soft: rgba(232,161,60,.14);
+    --up: #3fb950; --up-soft: rgba(63,185,80,.13);
+    --down: #f0546a; --down-soft: rgba(240,84,106,.13);
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px; line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--muted); }
+
+  .app { height: 100vh; display: flex; flex-direction: column; }
+
+  /* ---------- top bar ---------- */
+  .bar {
+    display: flex; align-items: center; gap: 20px;
+    padding: 12px 22px; border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: .04em; }
+  .brand .mk { color: var(--accent); font-size: 16px; }
+  .brand b { font-weight: 700; letter-spacing: .12em; }
+  .brand small { color: var(--muted); font-weight: 400; letter-spacing: .02em; }
+  .chip {
+    font-size: 10px; font-weight: 700; letter-spacing: .1em; padding: 2px 7px;
+    border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted);
+  }
+  .chip.sim { color: var(--accent); border-color: var(--accent); }
+
+  .idx { display: flex; gap: 18px; margin-left: 6px; }
+  .idx .i { display: flex; align-items: baseline; gap: 7px; }
+  .idx .i .n { font-size: 10px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+  .idx .i .v { font-size: 12px; font-weight: 600; }
+
+  .spacer { flex: 1; }
+  .clock { text-align: right; line-height: 1.15; }
+  .clock .t { font-size: 15px; font-weight: 600; }
+  .clock small { display: block; font-size: 10px; color: var(--muted); letter-spacing: .03em; }
+  .clock small b { color: var(--accent); font-weight: 600; }
+  .tbtn {
+    background: none; border: 1px solid var(--line-strong); color: var(--muted);
+    width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    display: grid; place-items: center; transition: color .15s, border-color .15s;
+  }
+  .tbtn:hover { color: var(--text); border-color: var(--accent); }
+  .tbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- layout ---------- */
+  .grid {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: minmax(380px, 44%) 1fr; gap: 0;
+  }
+  .ideas { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .detail { display: flex; flex-direction: column; min-height: 0; }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 4px; padding: 12px 16px 10px; overflow-x: auto; }
+  .tab {
+    font-size: 11px; letter-spacing: .04em; font-weight: 500; white-space: nowrap;
+    padding: 6px 12px; border-radius: 8px; border: 1px solid transparent;
+    color: var(--muted); background: none; cursor: pointer; transition: all .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); background: var(--accent-soft); border-color: transparent; font-weight: 600; }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ---------- table ---------- */
+  .tablewrap { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    position: sticky; top: 0; z-index: 1; background: var(--surface);
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase; font-weight: 500;
+    color: var(--faint); text-align: right; padding: 6px 12px 8px;
+  }
+  thead th:first-child { text-align: left; }
+  tbody td { padding: 9px 12px; text-align: right; border-top: 1px solid var(--line); white-space: nowrap; }
+  tbody tr { cursor: pointer; transition: background .12s; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr.sel { background: var(--accent-soft); }
+  tbody tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+  td.sym { text-align: left; font-weight: 700; letter-spacing: .02em; }
+  td.sub { color: var(--muted); }
+  .state {
+    display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .06em;
+    padding: 2px 6px; border-radius: 5px; min-width: 40px; text-align: center;
+  }
+  .s-RUN, .s-UP, .s-HOD { color: var(--up); background: var(--up-soft); }
+  .s-FADE, .s-DN { color: var(--down); background: var(--down-soft); }
+  .s-HALT { color: var(--accent); background: var(--accent-soft); }
+  .pill { padding: 2px 6px; border-radius: 5px; font-weight: 600; }
+  .pill.pos { background: var(--up-soft); } .pill.neg { background: var(--down-soft); }
+
+  /* ---------- detail / chart ---------- */
+  .dhead { display: flex; align-items: center; gap: 16px; padding: 14px 22px 10px; flex-wrap: wrap; }
+  .dsym { display: flex; align-items: baseline; gap: 12px; }
+  .dsym .cs { font-size: 24px; font-weight: 700; letter-spacing: .02em; }
+  .dsym .cp { font-size: 20px; font-weight: 600; }
+  .dsym .cc { font-size: 14px; font-weight: 600; }
+  .dmeta { font-size: 11px; color: var(--muted); }
+  .tf { margin-left: auto; display: flex; gap: 4px; }
+  .tf button {
+    font-size: 11px; padding: 4px 11px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line-strong); background: none; color: var(--muted);
+  }
+  .tf button.on { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 700; }
+  .chartwrap { flex: 1; min-height: 0; padding: 0 12px; position: relative; }
+  canvas { width: 100%; height: 100%; display: block; }
+  .stats { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid var(--line); }
+  .stat { padding: 10px 16px; border-right: 1px solid var(--line); }
+  .stat:last-child { border-right: none; }
+  .stat .k { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .stat .v { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .news { border-top: 1px solid var(--line); padding: 10px 22px 14px; display: flex; flex-direction: column; gap: 7px; }
+  .news .h { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .news .row { display: flex; gap: 10px; align-items: baseline; }
+  .news .row .tm { font-size: 10px; color: var(--muted); }
+  .news .row .sy { font-size: 11px; font-weight: 700; color: var(--accent); }
+  .news .row .hd { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .ideas { border-right: none; border-bottom: 1px solid var(--line); }
+    .idx { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand"><span class="mk">◆</span> <b>SCOUT</b> <small>momentum scanner</small>
+      <span class="chip sim" id="mode">SIM</span></div>
+    <div class="idx" id="idx"></div>
+    <div class="spacer"></div>
+    <div class="clock"><span class="t mono" id="clock">--:--:--</span>
+      <small>to close <b id="cd" class="mono">--:--</b></small></div>
+    <button class="tbtn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <main class="grid">
+    <section class="ideas">
+      <div class="tabs" id="tabs"></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>Symbol</th><th>Last</th><th>Chg%</th><th>RVol</th><th>Float</th><th>Signal</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="detail">
+      <div class="dhead">
+        <div class="dsym">
+          <span class="cs" id="cSym">—</span>
+          <span class="cp mono" id="cPrice"></span>
+          <span class="cc mono" id="cChg"></span>
+        </div>
+        <div class="dmeta mono" id="cMeta"></div>
+        <div class="tf" id="tf">
+          <button data-tf="1m" class="on">1m</button>
+          <button data-tf="5m">5m</button>
+        </div>
+      </div>
+      <div class="chartwrap"><canvas id="chart"></canvas></div>
+      <div class="stats" id="stats"></div>
+      <div class="news">
+        <div class="h">News wire</div>
+        <div id="news"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ---------------- utilities ---------------- */
+const $ = id => document.getElementById(id);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function gauss(r){let u=0,v=0;while(u===0)u=r();while(v===0)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+const fmt=(n,d=2)=>(n==null||isNaN(n))?"—":Number(n).toFixed(d);
+const sgn=v=>v>0?"+":"";
+function fvol(v){if(v>=1e9)return(v/1e9).toFixed(2)+"B";if(v>=1e6)return(v/1e6).toFixed(2)+"M";if(v>=1e3)return(v/1e3).toFixed(1)+"K";return String(Math.round(v||0));}
+function hhmmss(t){return new Date(t*1000).toLocaleTimeString("en-US",{hour12:false});}
+
+/* ---------------- universe ---------------- */
+const BIG=new Set(["NVDA","TSLA","AMD","AAPL","META","AMZN","PLTR","INTC","BAC","F","NFLX"]);
+const RUN={MARA:.55,RIOT:.35,COIN:.60,SMCI:.70,BBAI:.45,PLUG:.50,GME:.40};
+const FADE={NIO:.30,LCID:.50,AMC:.40};
+const SECTORS=["Technology","Financials","Energy","Healthcare","Crypto Miners","Consumer","EV / Auto","Semiconductors"];
+const SYMS=["NVDA","TSLA","AMD","COIN","MARA","RIOT","SMCI","BBAI","PLUG","GME","AMC","SOFI",
+  "NIO","LCID","RIVN","HOOD","AAPL","META","AMZN","PLTR","SNAP","F","INTC","BAC"];
+const NEWS_T=[
+  "{s} prices registered direct offering","{s} receives FDA clearance for lead program",
+  "{s} Q3 revenue tops estimates, guides higher","Piper Sandler lifts {s} price target",
+  "{s} announces strategic partnership","{s} files S-3 shelf registration",
+  "RBC initiates {s} at Outperform","{s} short interest climbs to {n}% of float",
+  "Insider buying reported at {s} (Form 4)","{s} to join small-cap index at rebalance"];
+const SESSION=390;
+
+/* ---------------- build deterministic sessions ---------------- */
+function buildSym(sym, dayShift){
+  const r=mulberry32(hash(sym)^dayShift);
+  const big=BIG.has(sym);
+  const prevClose=big?25+r()*195:0.9+r()*11;
+  const floatSh=big?3e8+r()*3.7e9:2e6+r()*118e6;
+  const avgVol=big?2e7+r()*6e7:3e5+r()*7.7e6;
+  const volp=0.008+r()*0.02;
+  const runner=RUN[sym]!=null, fader=FADE[sym]!=null;
+  const gap=runner?0.05+r()*0.20:fader?-(0.03+r()*0.09):(r()-0.5)*0.06;
+  const peak=RUN[sym]??FADE[sym]??0.5;
+  const target=runner?0.30+r()*0.80:fader?-(0.15+r()*0.30):(r()-0.4)*0.09;
+  const noise=Math.min(0.0035,volp*0.15);
+  const candles=[]; let prevC=prevClose*(1+gap), eps=0;
+  for(let i=0;i<SESSION;i++){
+    const frac=i/SESSION;
+    const climb=1/(1+Math.exp(-(frac-peak)/0.06));
+    const fade=Math.max(0,frac-peak)*0.5;
+    const level=prevClose*(1+gap+target*(climb-fade));
+    eps=eps*0.7+gauss(r)*noise;
+    const c=Math.max(.01,level*(1+eps));
+    const o=prevC;
+    const hi=Math.max(o,c)*(1+Math.abs(gauss(r))*noise);
+    const lo=Math.min(o,c)*(1-Math.abs(gauss(r))*noise);
+    const intensity=Math.abs(c-o)/Math.max(o,1e-6);
+    const vmult=0.6+4*Math.exp(-((frac-peak)**2)/(2*0.08**2))+40*intensity;
+    candles.push({o,h:hi,l:lo,c,v:avgVol/SESSION*vmult*(0.7+r()*0.7)});
+    prevC=c;
+  }
+  return {sym,prevClose,floatSh,avgVol,big,runner,fader,candles,
+    sector:SECTORS[hash(sym)%SECTORS.length]};
+}
+
+let day=0;
+let book=SYMS.map(s=>buildSym(s,day));
+let revealed=Math.floor(0.62*SESSION);
+const halts={}; let news=[]; let newsLast=0;
+
+/* ---------------- metrics ---------------- */
+function metrics(b){
+  const n=Math.min(revealed,b.candles.length);
+  const vis=b.candles.slice(0,n);
+  const last=vis[n-1];
+  const price=last.c, open=vis[0].o;
+  let hod=-1e9,lod=1e9,vol=0,pv=0;
+  for(const k of vis){hod=Math.max(hod,k.h);lod=Math.min(lod,k.l);vol+=k.v;pv+=(k.h+k.l+k.c)/3*k.v;}
+  const vwap=vol?pv/vol:price;
+  const chg=(price-b.prevClose)/b.prevClose*100;
+  const gap=(open-b.prevClose)/b.prevClose*100;
+  const frac=n/SESSION, rvol=vol/(b.avgVol*frac||1);
+  // ATR(14)
+  let tr=0,cnt=0,pc=vis[Math.max(0,n-15)].o;
+  for(let i=Math.max(0,n-14);i<n;i++){const k=vis[i];tr+=Math.max(k.h-k.l,Math.abs(k.h-pc),Math.abs(k.l-pc));pc=k.c;cnt++;}
+  const atr=cnt?tr/cnt:0;
+  const ref=vis[Math.max(0,n-3)].c, mom2=ref?(price-ref)/ref*100:0;
+  const distHod=hod?(price-hod)/hod*100:0;
+  const rot=b.floatSh?vol/b.floatSh:0;
+  const halted=!!halts[b.sym];
+  let state=halted?"HALT":b.runner?(Math.abs(distHod)<=0.6?"HOD":"RUN"):b.fader?"FADE":(chg>0?"UP":"DN");
+  return {sym:b.sym,price,chg,gap,vol,rvol,atr,vwap,hod,lod,distHod,mom2,rot,
+    floatSh:b.floatSh,sector:b.sector,state,vis};
+}
+function allMetrics(){return book.map(metrics);}
+
+/* ---------------- filters (tabs) ---------------- */
+const TABS={
+  "Trade Ideas":rs=>rs.filter(m=>m.price>=0.5&&m.price<=600)
+      .map(m=>[m,Math.abs(m.chg)*0.4+m.mom2*3+(m.rvol-1)*8]).sort((a,b)=>b[1]-a[1]).map(x=>x[0]),
+  "Momentum":rs=>rs.filter(m=>Math.abs(m.mom2)>0.1).sort((a,b)=>b.mom2-a.mom2),
+  "Gappers":rs=>rs.filter(m=>m.gap>=3).sort((a,b)=>b.gap-a.gap),
+  "Low Float":rs=>rs.filter(m=>m.floatSh<=50e6&&m.chg>0).sort((a,b)=>b.chg-a.chg),
+  "Near HOD":rs=>rs.filter(m=>m.chg>0&&Math.abs(m.distHod)<=1).sort((a,b)=>b.distHod-a.distHod),
+  "Halted":rs=>rs.filter(m=>m.state==="HALT"),
+};
+let activeTab="Trade Ideas";
+let focus=null, tf="1m", lastMetrics=[];
+
+/* ---------------- render: tabs + table ---------------- */
+function renderTabs(){
+  const el=$("tabs"); el.innerHTML="";
+  Object.keys(TABS).forEach(name=>{
+    const b=document.createElement("button");
+    b.className="tab"+(name===activeTab?" active":""); b.textContent=name;
+    b.onclick=()=>{activeTab=name;renderTabs();renderTable();};
+    el.appendChild(b);
+  });
+}
+function renderTable(){
+  const rows=TABS[activeTab](lastMetrics).slice(0,16);
+  const tb=$("rows"); tb.innerHTML="";
+  if(!rows.length){tb.innerHTML='<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">— no names match this filter right now —</td></tr>';return;}
+  for(const m of rows){
+    const tr=document.createElement("tr");
+    if(m.sym===focus)tr.className="sel";
+    const chgCls=m.chg>0?"up":m.chg<0?"down":"muted";
+    tr.innerHTML=`<td class="sym">${m.sym}</td>
+      <td class="mono">${fmt(m.price,m.price<1?3:2)}</td>
+      <td class="mono ${chgCls}"><span class="pill ${m.chg>0?'pos':m.chg<0?'neg':''}">${sgn(m.chg)}${fmt(m.chg,1)}%</span></td>
+      <td class="mono">${fmt(m.rvol,1)}×</td>
+      <td class="mono sub">${fvol(m.floatSh)}</td>
+      <td><span class="state s-${m.state}">${m.state}</span></td>`;
+    tr.onclick=()=>{focus=m.sym;renderTable();renderDetail();};
+    tb.appendChild(tr);
+  }
+}
+
+/* ---------------- render: detail + chart ---------------- */
+function renderDetail(){
+  const m=lastMetrics.find(x=>x.sym===focus);
+  if(!m)return;
+  $("cSym").textContent=m.sym;
+  $("cPrice").textContent=fmt(m.price,m.price<1?3:2);
+  const cc=$("cChg");cc.textContent=`${sgn(m.chg)}${fmt(m.chg,2)}%`;
+  cc.className="cc mono "+(m.chg>0?"up":m.chg<0?"down":"muted");
+  $("cMeta").textContent=`${m.sector} · Float ${fvol(m.floatSh)} · RVol ${fmt(m.rvol,1)}× · Rot ${fmt(m.rot,2)}×`;
+  const st=[["VWAP",fmt(m.vwap,2)],["HOD",fmt(m.hod,2)],["LOD",fmt(m.lod,2)],
+    ["ATR",fmt(m.atr,3)],["Gap%",sgn(m.gap)+fmt(m.gap,1)],["2-Min",sgn(m.mom2)+fmt(m.mom2,1)+"%"]];
+  $("stats").innerHTML=st.map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v mono">${v}</div></div>`).join("");
+  drawChart(m);
+}
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function drawChart(m){
+  const cv=$("chart"),wrap=cv.parentElement;
+  const dpr=window.devicePixelRatio||1;
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  cv.width=W*dpr;cv.height=H*dpr;
+  const x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,W,H);
+  let bars=m.vis;
+  if(tf==="5m"){const out=[];for(let i=0;i<bars.length;i+=5){const c=bars.slice(i,i+5);if(!c.length)continue;out.push({o:c[0].o,h:Math.max(...c.map(k=>k.h)),l:Math.min(...c.map(k=>k.l)),c:c[c.length-1].c,v:c.reduce((a,k)=>a+k.v,0)});}bars=out;}
+  if(!bars.length)return;
+  const padR=54,padB=22,padT=10,padL=8;
+  const pw=W-padR-padL,ph=H-padB-padT,volH=ph*0.20,priceH=ph-volH-6;
+  let hi=-1e9,lo=1e9,mv=0;for(const b of bars){hi=Math.max(hi,b.h);lo=Math.min(lo,b.l);mv=Math.max(mv,b.v);}
+  const pad=(hi-lo)*0.08||1;hi+=pad;lo-=pad;
+  const px=i=>padL+(i+0.5)*(pw/bars.length);
+  const py=p=>padT+(1-(p-lo)/(hi-lo))*priceH;
+  const vy=v=>padT+priceH+6+(1-v/mv)*volH;
+  const cUp=css("--up"),cDn=css("--down"),cLine=css("--line"),cMut=css("--faint"),cAcc=css("--accent"),cBg=css("--bg");
+  x.strokeStyle=cLine;x.fillStyle=cMut;x.font='10px "SF Mono",Menlo,monospace';x.lineWidth=1;
+  for(let i=0;i<=4;i++){const p=lo+(hi-lo)*i/4,yy=py(p);x.globalAlpha=.5;x.beginPath();x.moveTo(padL,yy);x.lineTo(padL+pw,yy);x.stroke();x.globalAlpha=1;x.fillText(p.toFixed(p<1?3:2),padL+pw+6,yy+3);}
+  // vwap
+  let pv=0,cv2=0;const vw=bars.map(b=>{const tp=(b.h+b.l+b.c)/3;pv+=tp*b.v;cv2+=b.v;return cv2?pv/cv2:b.c;});
+  x.strokeStyle=cAcc;x.globalAlpha=.85;x.setLineDash([4,3]);x.beginPath();vw.forEach((p,i)=>{const xx=px(i),yy=py(p);i?x.lineTo(xx,yy):x.moveTo(xx,yy);});x.stroke();x.setLineDash([]);x.globalAlpha=1;
+  const cw=Math.max(1,(pw/bars.length)*0.62);
+  bars.forEach((b,i)=>{
+    const up=b.c>=b.o,col=up?cUp:cDn,xx=px(i);
+    x.globalAlpha=.28;x.fillStyle=col;const vY=vy(b.v),vB=padT+priceH+6+volH;x.fillRect(xx-cw/2,vY,cw,vB-vY);x.globalAlpha=1;
+    x.strokeStyle=col;x.beginPath();x.moveTo(xx,py(b.h));x.lineTo(xx,py(b.l));x.stroke();
+    x.fillStyle=col;const yo=py(b.o),yc=py(b.c);x.fillRect(xx-cw/2,Math.min(yo,yc),cw,Math.max(1,Math.abs(yc-yo)));
+  });
+  const last=bars[bars.length-1].c,upDay=last>=bars[0].o,col=upDay?cUp:cDn;
+  x.strokeStyle=col;x.globalAlpha=.6;x.setLineDash([2,2]);x.beginPath();x.moveTo(padL,py(last));x.lineTo(padL+pw,py(last));x.stroke();x.setLineDash([]);x.globalAlpha=1;
+  x.fillStyle=col;x.fillRect(padL+pw,py(last)-8,padR,16);x.fillStyle=cBg;x.fillText(last.toFixed(last<1?3:2),padL+pw+6,py(last)+3);
+}
+
+/* ---------------- indices, news, clock ---------------- */
+function renderIdx(){
+  const defs=[["DJIA",44000],["S&P",6300],["NDX",20500],["Oil",78]];
+  const r=mulberry32(Math.floor(Date.now()/20000));
+  $("idx").innerHTML=defs.map(([n,base])=>{const chg=(n==="Oil"?(r()*10-3):(r()*3.2-1.6));const cls=chg>=0?"up":"down";
+    return `<div class="i"><span class="n">${n}</span><span class="v mono ${cls}">${sgn(chg)}${chg.toFixed(2)}%</span></div>`;}).join("");
+}
+function pushNews(){
+  const now=Date.now()/1000;
+  if(now-newsLast>6&&Math.random()<0.6){
+    const s=SYMS[Math.floor(Math.random()*SYMS.length)];
+    const h=NEWS_T[Math.floor(Math.random()*NEWS_T.length)].replace("{s}",s).replace("{n}",2+Math.floor(Math.random()*22));
+    news.unshift({t:Math.floor(now),s,h});news=news.slice(0,6);newsLast=now;
+  }
+  $("news").innerHTML=news.slice(0,3).map(n=>`<div class="row"><span class="tm mono">${hhmmss(n.t)}</span><span class="sy">${n.s}</span><span class="hd">${n.h}</span></div>`).join("")||'<div class="row muted">— wire quiet —</div>';
+}
+function clock(){
+  const now=Date.now()/1000;$("clock").textContent=hhmmss(now);
+  const d=new Date(),cl=new Date(d);cl.setHours(16,0,0,0);let s=Math.max(0,Math.floor((cl-d)/1000));
+  const h=String(Math.floor(s/3600)).padStart(2,"0"),m=String(Math.floor(s%3600/60)).padStart(2,"0");
+  $("cd").textContent=`${h}:${m}`;
+}
+function maybeHalt(){
+  const now=Date.now()/1000;
+  for(const k in halts){if(halts[k]<now)delete halts[k];}
+  if(Math.random()<0.05&&Object.keys(halts).length<2){const s=Object.keys(RUN)[Math.floor(Math.random()*Object.keys(RUN).length)];halts[s]=now+30+Math.random()*90;}
+}
+
+/* ---------------- loop ---------------- */
+function tick(){
+  revealed++;
+  if(revealed>=SESSION){day++;book=SYMS.map(s=>buildSym(s,day));revealed=Math.floor(0.4*SESSION);}
+  maybeHalt();
+  lastMetrics=allMetrics();
+  if(!focus){const ideas=TABS["Trade Ideas"](lastMetrics);focus=(ideas[0]||lastMetrics[0]).sym;}
+  renderTable();renderDetail();pushNews();
+}
+function fast(){renderIdx();}
+
+/* ---------------- theme ---------------- */
+function initTheme(){
+  let t=null;try{t=localStorage.getItem("scout-theme");}catch(e){}
+  if(t)document.documentElement.setAttribute("data-theme",t);
+  $("themeBtn").onclick=()=>{
+    const cur=document.documentElement.getAttribute("data-theme");
+    const isDark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+    const next=isDark?"light":"dark";
+    document.documentElement.setAttribute("data-theme",next);
+    try{localStorage.setItem("scout-theme",next);}catch(e){}
+    if(focus)drawChart(lastMetrics.find(x=>x.sym===focus));
+  };
+}
+
+/* ---------------- boot ---------------- */
+$("tf").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+  $("tf").querySelectorAll("button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");tf=b.dataset.tf;if(focus)renderDetail();
+});
+window.addEventListener("resize",()=>{if(focus)drawChart(lastMetrics.find(x=>x.sym===focus));});
+initTheme();renderTabs();renderIdx();
+lastMetrics=allMetrics();focus=TABS["Trade Ideas"](lastMetrics)[0].sym;
+renderTable();renderDetail();pushNews();clock();
+setInterval(clock,1000);
+setInterval(fast,4000);
+setInterval(tick,2500);
+</script>
+
+</body>
+</html>

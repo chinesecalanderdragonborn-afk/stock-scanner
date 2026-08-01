@@ -37,7 +37,21 @@ it.
 
 ---
 
-## Quick start — the easy way
+## Two ways to run it
+
+**1. Instant / zero-install — `standalone.html`**
+Just **double-click `standalone.html`** and it opens in your browser. No Python,
+no terminal, no setup. It's a clean, minimal single-file dashboard that runs the
+market **simulator** in the browser — perfect for a always-lively demo you can
+open anywhere (or host as a link).
+
+**2. Live market data — the Python app**
+For real quotes from Yahoo Finance, run the full app below. Same scanners, with
+live data.
+
+---
+
+## Quick start — the easy way (live data)
 
 **Windows:** double-click **`Start-Windows.bat`**
 **macOS:** double-click **`Start-Mac.command`**
