@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 import config
 from backend.engine import metrics as metrics_engine
 from backend.engine import scanners
+from backend.engine import signals
 from backend.providers.factory import make_provider
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
@@ -40,6 +41,8 @@ class Snapshot:
         self.indices: list[dict] = []
         self.halts: list[dict] = []
         self.bars: dict[str, list] = {}   # symbol -> list[Bar] (1-min session)
+        self.plans: dict[str, dict] = {}  # symbol -> trade plan dict
+        self.top_setups: list[dict] = []  # rows ranked by setup grade/score
         self.updated: float = 0.0
         self.error: str = ""
         self.provider = provider_name
@@ -56,6 +59,14 @@ class Snapshot:
                 bars[q.symbol] = q.bars
         self.rows = rows
         self.bars = bars
+        # Build a risk-defined trade plan for every name, then rank the
+        # actionable ones by setup grade so the best setups float to the top.
+        self.plans = {m.symbol: signals.build(m).as_dict() for m in rows}
+        ranked = sorted(
+            (p for p in self.plans.values() if p["bias"] != "none" and p["score"] > 0),
+            key=lambda p: p["score"], reverse=True,
+        )
+        self.top_setups = ranked[:config.SCAN_LIMIT]
         self.scans = scanners.run_all(rows)
         self.news = [n.__dict__ for n in provider.get_news(30)]
         self.indices = [i.__dict__ for i in provider.get_indices()]
@@ -74,7 +85,14 @@ class Snapshot:
             "loading": self.updated == 0.0,
             "error": self.error,
             "rows": [m.as_dict() for m in self.rows],
+            "plans": self.plans,
+            "top_setups": self.top_setups,
             "scans": self.scans,
+            "risk": {
+                "account": config.ACCOUNT_SIZE,
+                "risk_pct": config.RISK_PER_TRADE_PCT,
+                "max_position_pct": config.MAX_POSITION_PCT,
+            },
             "news": self.news,
             "indices": self.indices,
             "halts": self.halts,
@@ -135,6 +153,17 @@ def get_quote(symbol: str):
     for m in snapshot.rows:
         if m.symbol == symbol.upper():
             return m.as_dict()
+    return JSONResponse({"error": "not found"}, status_code=404)
+
+
+@app.get("/api/plan/{symbol}")
+def get_plan(symbol: str, account: float | None = None, risk_pct: float | None = None):
+    """A full, sized trade plan for one symbol. `account` and `risk_pct` let a
+    trader size the plan to their own book without touching config."""
+    sym = symbol.upper()
+    for m in snapshot.rows:
+        if m.symbol == sym:
+            return signals.build(m, account=account, risk_pct=risk_pct).as_dict()
     return JSONResponse({"error": "not found"}, status_code=404)
 
 

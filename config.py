@@ -61,3 +61,12 @@ HOD_PROXIMITY_PCT = float(os.getenv("SCANNER_HOD_PROXIMITY", "1.0"))
 
 # How many rows each scan table returns.
 SCAN_LIMIT = int(os.getenv("SCANNER_SCAN_LIMIT", "12"))
+
+
+# --- Risk / position sizing ------------------------------------------------
+# Defaults for the trade-plan engine. The dashboard lets a trader override
+# account size and per-trade risk live (position size is a pure division by
+# risk-per-share, so it recomputes instantly in the browser).
+ACCOUNT_SIZE = float(os.getenv("SCANNER_ACCOUNT_SIZE", "25000"))     # $
+RISK_PER_TRADE_PCT = float(os.getenv("SCANNER_RISK_PCT", "1.0"))     # % of acct
+MAX_POSITION_PCT = float(os.getenv("SCANNER_MAX_POSITION_PCT", "40"))  # notional cap

@@ -130,6 +130,33 @@ canvas { width: 100%; height: 100%; display: block; }
 .stat:last-child { border-right: none; }
 .stat .k { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
 .stat .v { font-size: 14px; font-weight: 600; margin-top: 2px; }
+/* --- trade plan --- */
+.plan { border-top: 1px solid var(--line); padding: 12px 22px 14px; }
+.planhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.planhead .h { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); display: flex; align-items: center; gap: 8px; }
+.risk { margin-left: auto; display: flex; gap: 12px; }
+.risk label { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 5px; letter-spacing: .03em; }
+.risk input { width: 74px; font-size: 12px; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); }
+.risk input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.grade { font-size: 11px; font-weight: 800; letter-spacing: .04em; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line-strong); color: var(--muted); }
+.grade.g-Ap { color: var(--up); background: var(--up-soft); border-color: var(--up); }
+.grade.g-A  { color: var(--up); background: var(--up-soft); border-color: transparent; }
+.grade.g-B  { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.grade.g-C  { color: var(--muted); }
+.planbody { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 10px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.pcell { background: var(--surface); padding: 9px 12px; }
+.pcell .k { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
+.pcell .v { font-size: 15px; font-weight: 700; margin-top: 2px; }
+.pcell.entry .v { color: var(--accent); }
+.pcell.stop .v { color: var(--down); }
+.pcell.tgt .v { color: var(--up); }
+.plannote { margin-top: 9px; font-size: 11px; color: var(--muted); line-height: 1.45; }
+.plannote b { color: var(--text); font-weight: 600; }
+.plan .flat { padding: 10px 0; color: var(--muted); font-size: 12px; }
+.bias { font-size: 9px; font-weight: 800; letter-spacing: .07em; padding: 2px 6px; border-radius: 5px; }
+.bias.long { color: var(--up); background: var(--up-soft); }
+.bias.short { color: var(--down); background: var(--down-soft); }
+
 .news { border-top: 1px solid var(--line); padding: 10px 22px 12px; display: flex; flex-direction: column; gap: 7px; }
 .news .h { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
 .news .row { display: flex; gap: 10px; align-items: baseline; }
