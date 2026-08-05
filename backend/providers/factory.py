@@ -1,8 +1,9 @@
-"""Provider selection with graceful fallback.
+"""Provider selection.
 
-PROVIDER=auto tries Yahoo once; if the probe fails (no network / blocked
-proxy / rate limit) it transparently falls back to the simulator so the
-dashboard always runs.
+Default is live Yahoo Finance data. If Yahoo can't be reached (no network,
+blocked proxy, rate limit) the dashboard still comes up on the simulator so it
+never hard-crashes — but it says so loudly, and the UI's SIM tag makes the
+fallback obvious. Set SCANNER_PROVIDER=simulated to force the offline demo.
 """
 from __future__ import annotations
 
@@ -24,15 +25,19 @@ def make_provider(universe=None):
     choice = config.PROVIDER
 
     if choice == "simulated":
+        print("[provider] using the built-in market simulator (offline demo)")
         return SimulatedProvider(universe), "simulated"
 
-    if choice == "yahoo":
-        return _probe_yahoo(universe), "yahoo"
-
-    # auto
+    # "yahoo" (default) and "auto" both prefer live data and fall back safely.
     try:
-        return _probe_yahoo(universe), "yahoo"
+        provider = _probe_yahoo(universe)
+        print("[provider] connected to live Yahoo Finance data")
+        return provider, "yahoo"
     except Exception as e:  # noqa: BLE001
-        print(f"[provider] live Yahoo unavailable ({e!s:.80}); "
-              f"using simulator")
+        print("\n" + "!" * 64)
+        print("  Could not reach live Yahoo Finance data:")
+        print(f"    {e!s:.90}")
+        print("  Falling back to the SIMULATOR so the app still runs.")
+        print("  (Check your internet connection; the top-left tag will read SIM.)")
+        print("!" * 64 + "\n")
         return SimulatedProvider(universe), "simulated"

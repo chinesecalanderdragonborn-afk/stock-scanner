@@ -56,10 +56,10 @@ def main() -> None:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     ensure_dependencies()
 
-    provider = os.environ.get("SCANNER_PROVIDER", "auto")
+    provider = os.environ.get("SCANNER_PROVIDER", "yahoo")
     print("=" * 60)
     print("  STOCK SCANNER — Trade Ideas Dashboard")
-    print(f"  data source : {provider}  (live Yahoo, falls back to simulator)")
+    print(f"  data source : {provider}  (live Yahoo Finance, no API key)")
     print(f"  address     : {URL}")
     print("=" * 60)
 

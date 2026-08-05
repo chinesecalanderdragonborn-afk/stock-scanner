@@ -9,10 +9,11 @@ import os
 
 
 # --- Data provider ---------------------------------------------------------
-# "auto"      -> try live (Yahoo) first, fall back to the simulator
-# "yahoo"     -> force live yfinance data (needs outbound network)
+# "yahoo"     -> live yfinance data (default); safely falls back to the
+#                simulator if Yahoo can't be reached, and says so
+# "auto"      -> same behaviour as "yahoo"
 # "simulated" -> force the built-in market simulator (no network needed)
-PROVIDER = os.getenv("SCANNER_PROVIDER", "auto").lower()
+PROVIDER = os.getenv("SCANNER_PROVIDER", "yahoo").lower()
 
 # How often (seconds) the backend recomputes scans and pushes over the socket.
 # Live (Yahoo) uses a slower cadence to stay well under rate limits.

@@ -96,7 +96,7 @@ environment variables:
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `SCANNER_PROVIDER` | `auto` | `auto` \| `yahoo` \| `simulated` |
+| `SCANNER_PROVIDER` | `yahoo` | `yahoo` (live, default) \| `simulated` (offline demo) |
 | `SCANNER_REFRESH` | `3` | Seconds between scan recomputes / pushes |
 | `SCANNER_PORT` | `8000` | HTTP port |
 | `SCANNER_MOMO_MIN_RVOL` | `1.5` | Min relative volume for momentum scans |
