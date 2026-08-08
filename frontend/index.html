@@ -47,6 +47,20 @@
         </div>
         <div class="chartwrap"><canvas id="chart"></canvas></div>
         <div class="stats" id="stats"></div>
+
+        <div class="plan" id="plan">
+          <div class="planhead">
+            <div class="h">Trade plan <span class="grade" id="pGrade">—</span></div>
+            <div class="risk">
+              <label>Acct $<input id="rAcct" class="mono" type="number" min="0" step="1000" /></label>
+              <label>Risk %<input id="rPct" class="mono" type="number" min="0" step="0.25" /></label>
+            </div>
+          </div>
+          <div class="planbody" id="planbody">
+            <div class="muted" style="padding:10px 0">— select a name for its plan —</div>
+          </div>
+        </div>
+
         <div class="news">
           <div class="h">News wire</div>
           <div id="news"></div>

@@ -16,8 +16,9 @@ function fvol(v) {
 function hhmmss(t) { return new Date(t * 1000).toLocaleTimeString("en-US", { hour12: false }); }
 
 const state = {
-  rows: [], bySym: {}, focus: null, tab: "Trade Ideas", tf: "1m",
+  rows: [], bySym: {}, focus: null, tab: "A+ Setups", tf: "1m",
   bars: [], serverOffset: 0, provider: null, lastUpdated: -1, wsOK: false,
+  plans: {}, risk: { account: 25000, pct: 1.0, maxPct: 40 }, riskInit: false,
 };
 
 /* ---- signal state derived from metrics ---- */
@@ -31,6 +32,12 @@ function signal(m) {
 
 /* ---- tab filters (computed from the full row set) ---- */
 const TABS = {
+  // Ranked purely by the server's trade-plan grade/score — the best,
+  // risk-defined setups first. This is the day-trader's shortlist.
+  "A+ Setups": (rs) => rs.filter((m) => {
+    const p = state.plans[m.symbol];
+    return p && p.bias !== "none" && p.score > 0;
+  }).sort((a, b) => (state.plans[b.symbol].score - state.plans[a.symbol].score)),
   "Trade Ideas": (rs) => rs.filter((m) => m.price >= 0.5 && m.price <= 2000)
       .map((m) => [m, Math.abs(m.change_pct) * 0.4 + m.mom_2min_pct * 3 + (m.rvol - 1) * 8])
       .sort((a, b) => b[1] - a[1]).map((x) => x[0]),
@@ -61,18 +68,68 @@ function renderTable() {
   }
   for (const m of rows) {
     const s = signal(m);
+    const p = state.plans[m.symbol];
     const tr = document.createElement("tr");
     if (m.symbol === state.focus) tr.className = "sel";
     const chgCls = m.change_pct > 0 ? "up" : m.change_pct < 0 ? "down" : "muted";
+    const gBadge = (p && p.bias !== "none")
+      ? `<span class="grade ${gradeCls(p.grade)}" title="setup score ${fmt(p.score, 0)}/100">${p.grade}</span>`
+      : `<span class="state s-${s}">${s}</span>`;
     tr.innerHTML = `<td class="sym">${m.symbol}</td>
       <td class="mono">${fmt(m.price, m.price < 1 ? 3 : 2)}</td>
       <td class="mono ${chgCls}"><span class="pill ${m.change_pct > 0 ? "pos" : m.change_pct < 0 ? "neg" : ""}">${sgn(m.change_pct)}${fmt(m.change_pct, 1)}%</span></td>
       <td class="mono">${fmt(m.rvol, 1)}×</td>
       <td class="mono sub">${m.float_shares ? fvol(m.float_shares) : "—"}</td>
-      <td><span class="state s-${s}">${s}</span></td>`;
+      <td>${gBadge}</td>`;
     tr.onclick = () => selectFocus(m.symbol);
     tb.appendChild(tr);
   }
+}
+
+function gradeCls(g) { return "g-" + g.replace("+", "p"); }
+
+/* ---- trade plan: server sets the levels/grade; shares recompute here so the
+   account/risk inputs are instant. ---- */
+function sizePlan(p) {
+  const risk = p.risk_per_share;
+  if (!risk || p.bias === "none") return { shares: 0, dollarRisk: 0, value: 0 };
+  const budget = state.risk.account * (state.risk.pct / 100);
+  let shares = Math.floor(budget / risk);
+  const capShares = Math.floor((state.risk.account * state.risk.maxPct / 100) / p.entry);
+  if (capShares > 0) shares = Math.min(shares, capShares);
+  shares = Math.max(shares, 0);
+  return { shares, dollarRisk: shares * risk, value: shares * p.entry };
+}
+
+function renderPlan() {
+  const grEl = $("pGrade"), body = $("planbody");
+  const m = state.bySym[state.focus];
+  const p = m && state.plans[m.symbol];
+  if (!p) { grEl.textContent = "—"; grEl.className = "grade"; body.innerHTML = '<div class="flat">— no data —</div>'; return; }
+  if (p.bias === "none") {
+    grEl.textContent = "—"; grEl.className = "grade g-C";
+    body.innerHTML = `<div class="flat" style="grid-column:1/-1">No clean setup — ${p.symbol} is chopping around VWAP with no directional edge. Stand aside.</div>`;
+    return;
+  }
+  grEl.innerHTML = `<span class="bias ${p.bias}">${p.bias.toUpperCase()}</span> ${p.grade} <span class="mono" style="opacity:.6">${fmt(p.score, 0)}</span>`;
+  grEl.className = "grade " + gradeCls(p.grade);
+  const sz = sizePlan(p);
+  const d = p.entry < 1 ? 3 : 2;
+  const cells = [
+    ["entry", "Entry / trigger", fmt(p.entry, d)],
+    ["stop", "Stop", fmt(p.stop, d)],
+    ["tgt", "Target 1 (1R)", fmt(p.target1, d)],
+    ["tgt", "Target 2 (2R)", fmt(p.target2, d)],
+    ["", "Risk / share", "$" + fmt(p.risk_per_share, d)],
+    ["", "Reward : risk", fmt(p.reward_risk, 1) + " : 1"],
+    ["", "Shares", sz.shares.toLocaleString()],
+    ["", "At risk", "$" + fmt(sz.dollarRisk, 0)],
+  ];
+  body.innerHTML = cells.map(([cls, k, v]) =>
+    `<div class="pcell ${cls}"><div class="k">${k}</div><div class="v mono">${v}</div></div>`).join("")
+    + `<div class="plannote" style="grid-column:1/-1"><b>${p.setup}.</b> ${p.notes}
+        Measured-move objective <b class="mono">${fmt(p.target_measured, d)}</b>.
+        Position ≈ <b class="mono">$${fmt(sz.value, 0)}</b> notional.</div>`;
 }
 
 /* ---- render: detail + chart ---- */
@@ -80,6 +137,7 @@ async function selectFocus(sym) {
   state.focus = sym;
   renderTable();
   renderDetailHeader();
+  renderPlan();
   await loadBars();
 }
 function renderDetailHeader() {
@@ -179,6 +237,18 @@ function applySnapshot(msg) {
   if (msg.loading) { $("status").textContent = "● loading market data…"; $("status").className = ""; return; }
 
   state.rows = msg.rows || [];
+  state.plans = msg.plans || {};
+  if (!state.riskInit && msg.risk) {
+    let saved = null; try { saved = JSON.parse(localStorage.getItem("scout-risk")); } catch (e) {}
+    state.risk = {
+      account: (saved && saved.account) || msg.risk.account,
+      pct: (saved && saved.pct) || msg.risk.risk_pct,
+      maxPct: msg.risk.max_position_pct,
+    };
+    $("rAcct").value = state.risk.account;
+    $("rPct").value = state.risk.pct;
+    state.riskInit = true;
+  }
   state.bySym = {}; state.rows.forEach((m) => (state.bySym[m.symbol] = m));
   renderTable();
   renderIdx(msg.indices);
@@ -189,6 +259,7 @@ function applySnapshot(msg) {
     selectFocus((ideas[0] || state.rows[0]).symbol);
   } else if (state.focus) {
     renderDetailHeader();
+    renderPlan();
     loadBars();
   }
   $("lastUpdate").textContent =
@@ -216,6 +287,17 @@ $("tf").querySelectorAll("button").forEach((b) => b.onclick = () => {
   $("tf").querySelectorAll("button").forEach((x) => x.classList.remove("on"));
   b.classList.add("on"); state.tf = b.dataset.tf; loadBars();
 });
+function initRiskInputs() {
+  const apply = () => {
+    const a = parseFloat($("rAcct").value), p = parseFloat($("rPct").value);
+    if (a > 0) state.risk.account = a;
+    if (p > 0) state.risk.pct = p;
+    try { localStorage.setItem("scout-risk", JSON.stringify({ account: state.risk.account, pct: state.risk.pct })); } catch (e) {}
+    renderPlan();
+  };
+  $("rAcct").addEventListener("input", apply);
+  $("rPct").addEventListener("input", apply);
+}
 function initTheme() {
   let t = null; try { t = localStorage.getItem("scout-theme"); } catch (e) {}
   if (t) document.documentElement.setAttribute("data-theme", t);
@@ -229,7 +311,7 @@ function initTheme() {
   };
 }
 window.addEventListener("resize", drawChart);
-initTheme(); renderTabs(); clock();
+initTheme(); initRiskInputs(); renderTabs(); clock();
 setInterval(clock, 1000);
 $("status").textContent = "● loading…";
 fetchSnapshotOnce();

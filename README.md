@@ -35,6 +35,26 @@ spreads, high/low of day, **float rotation**, and 2-minute momentum.
 volume sub-panel, and last-price marker. Click any symbol in any table to load
 it.
 
+**Trade-plan engine — the decision layer.** A scanner tells you *what* is
+moving; a day trader still has to decide *whether to take it, where, and how
+big*. Every name the scanner surfaces now arrives as a complete, risk-defined
+plan:
+
+| Piece | How it's derived |
+|---|---|
+| **Bias** (long / short / stand-aside) | Which side of VWAP price is on + the day's direction |
+| **Grade** A+ / A / B / C (0–100 score) | Blends RVol, thrust, VWAP alignment, location in the day's range, float rotation and reward:risk into one number |
+| **Entry / trigger** | HOD breakout (long) or LOD breakdown (short); VWAP reclaim/reject otherwise |
+| **Stop** | Anchored to VWAP — the intraday line-in-the-sand — but never wider than 1 ATR |
+| **Targets** | 1R / 2R off the defined risk, plus a measured-move objective |
+| **Position size** | Shares sized to *your* account and per-trade risk %, capped by a notional guardrail |
+
+The new **A+ Setups** tab ranks the whole universe by grade, so the best
+risk-defined setups float to the top. Set your **account size** and **risk %**
+in the plan panel — position size and dollars-at-risk recompute instantly (and
+persist across reloads). *This is a disciplined restatement of the metrics, not
+investment advice.*
+
 ---
 
 ## Two ways to run it — same minimal design either way
@@ -104,6 +124,9 @@ environment variables:
 | `SCANNER_GAP_MIN_PCT` | `3` | Min gap % for the Gap-Up scan |
 | `SCANNER_LOW_FLOAT_MAX` | `50M` | Float ceiling for low-float runners |
 | `SCANNER_SCAN_LIMIT` | `12` | Rows per scan table |
+| `SCANNER_ACCOUNT_SIZE` | `25000` | Account size used to size trade plans ($) |
+| `SCANNER_RISK_PCT` | `1.0` | Default risk per trade (% of account) |
+| `SCANNER_MAX_POSITION_PCT` | `40` | Notional cap on any single position (% of account) |
 
 Edit `UNIVERSE` in `config.py` to change which tickers are watched.
 
@@ -123,6 +146,7 @@ backend/
   engine/
     metrics.py                # VWAP, ATR, RVol, HOD/LOD, float rotation, ...
     scanners.py               # the trade-idea scanners
+    signals.py                # trade-plan engine: bias, grade, entry/stop/targets, sizing
   main.py                     # FastAPI: REST + /ws websocket, serves frontend
 frontend/
   index.html / styles.css / app.js   # dark multi-panel terminal UI + canvas chart
@@ -145,6 +169,7 @@ broker feed, …) is just one new class.
 | `GET /api/snapshot` | full current state (all scans, news, indices, halts) |
 | `GET /api/scan/{name}` | one scanner's rows |
 | `GET /api/quote/{symbol}` | full metrics for one symbol |
+| `GET /api/plan/{symbol}?account=&risk_pct=` | risk-defined trade plan, sized to your account |
 | `GET /api/bars/{symbol}?interval=1m\|5m` | session candles for the chart |
 | `WS  /ws` | live snapshot stream |
 
