@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0b1020">
 <title>Mental Math Dojo</title>
 <style>
@@ -23,6 +23,19 @@
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%}
+
+  /* ---- accessibility ---- */
+  .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .skip-link{position:absolute;left:8px;top:-48px;z-index:100;background:var(--brand);color:#fff;padding:10px 16px;border-radius:10px;font-weight:700;transition:top .15s;text-decoration:none}
+  .skip-link:focus{top:8px}
+  /* Visible, high-contrast focus ring on every interactive element */
+  a:focus-visible,button:focus-visible,input:focus-visible,[tabindex]:focus-visible,.op:focus-visible,.preset:focus-visible,.sw input:focus-visible + span{
+    outline:3px solid var(--accent);outline-offset:3px;border-radius:10px;
+  }
+  .answer:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  }
   body{
     font-family:var(--font); color:var(--ink);
     background:
@@ -74,6 +87,7 @@
     border:1px solid var(--line);background:var(--panel);border-radius:12px;
     padding:11px 8px;text-align:center;cursor:pointer;transition:.15s;user-select:none;
     display:flex;flex-direction:column;gap:2px;align-items:center;
+    font:inherit;color:inherit;width:100%;
   }
   .op .sym{font-size:1.3rem;font-weight:700;line-height:1}
   .op .nm{font-size:.72rem;color:var(--muted)}
@@ -197,7 +211,7 @@
   .kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:.92rem}
   .kv b{font-variant-numeric:tabular-nums}
   .preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
-  .preset{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px;cursor:pointer;transition:.15s}
+  .preset{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px;cursor:pointer;transition:.15s;font:inherit;color:inherit;text-align:left;width:100%}
   .preset:hover{border-color:var(--brand);transform:translateY(-2px)}
   .preset .pt{font-weight:800;margin-bottom:3px}
   .preset .pd{font-size:.76rem;color:var(--muted)}
@@ -215,119 +229,120 @@
 </style>
 </head>
 <body>
+<a href="#stage" class="skip-link">Skip to the practice area</a>
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <div class="logo">🧠</div>
+      <div class="logo" aria-hidden="true">🧠</div>
       <div>
         <h1>Mental Math Dojo</h1>
         <div class="sub">Personal trainer · tuned exactly to you</div>
       </div>
     </div>
-    <div class="top-actions">
-      <button class="chip" id="btnPresets">⚡ <span>Presets</span></button>
-      <button class="chip" id="btnStats">📊 <span>Stats</span></button>
-      <button class="chip" id="btnTheme">🌙 <span>Theme</span></button>
-      <button class="chip" id="btnSound">🔊 <span>Sound</span></button>
-    </div>
+    <nav class="top-actions" aria-label="App controls">
+      <button class="chip" id="btnPresets"><span aria-hidden="true">⚡</span> <span>Presets</span></button>
+      <button class="chip" id="btnStats"><span aria-hidden="true">📊</span> <span>Stats</span></button>
+      <button class="chip" id="btnTheme" aria-pressed="false"><span aria-hidden="true">🌙</span> <span>Theme</span></button>
+      <button class="chip" id="btnSound" aria-pressed="true"><span aria-hidden="true">🔊</span> <span>Sound</span></button>
+    </nav>
   </header>
 
   <div class="grid">
     <!-- ============ SETTINGS ============ -->
-    <section class="card settings pad">
-      <h2>⚙️ Configure</h2>
+    <section class="card settings pad" aria-labelledby="cfgH">
+      <h2 id="cfgH"><span aria-hidden="true">⚙️</span> Configure</h2>
 
-      <div class="field">
-        <label>Operations <span class="val" id="opsVal">Mixed</span></label>
+      <div class="field" role="group" aria-labelledby="opsLabel">
+        <label id="opsLabel">Operations <span class="val" id="opsVal">Mixed</span></label>
         <div class="ops" id="ops">
-          <div class="op" data-op="add"><div class="sym">+</div><div class="nm">Addition</div></div>
-          <div class="op" data-op="sub"><div class="sym">−</div><div class="nm">Subtraction</div></div>
-          <div class="op" data-op="mul"><div class="sym">×</div><div class="nm">Multiplication</div></div>
-          <div class="op" data-op="div"><div class="sym">÷</div><div class="nm">Division</div></div>
+          <button type="button" class="op" data-op="add" aria-pressed="false"><span class="sym" aria-hidden="true">+</span><span class="nm">Addition</span></button>
+          <button type="button" class="op" data-op="sub" aria-pressed="false"><span class="sym" aria-hidden="true">−</span><span class="nm">Subtraction</span></button>
+          <button type="button" class="op" data-op="mul" aria-pressed="false"><span class="sym" aria-hidden="true">×</span><span class="nm">Multiplication</span></button>
+          <button type="button" class="op" data-op="div" aria-pressed="false"><span class="sym" aria-hidden="true">÷</span><span class="nm">Division</span></button>
         </div>
       </div>
 
       <div class="field">
-        <label>Difficulty <span class="val" id="diffVal">Medium (3)</span></label>
-        <input type="range" id="diff" min="1" max="6" step="1" value="3">
-        <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:.7rem;margin-top:5px">
+        <label for="diff">Difficulty <span class="val" id="diffVal">Medium (3)</span></label>
+        <input type="range" id="diff" min="1" max="6" step="1" value="3" aria-describedby="diffVal">
+        <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:.7rem;margin-top:5px" aria-hidden="true">
           <span>Rookie</span><span>Insane</span>
         </div>
       </div>
 
       <div class="field">
-        <label>Digits per number <span class="val" id="digitsVal">1–2</span></label>
-        <input type="range" id="digits" min="1" max="5" step="1" value="2">
+        <label for="digits">Digits per number <span class="val" id="digitsVal">1–2</span></label>
+        <input type="range" id="digits" min="1" max="5" step="1" value="2" aria-describedby="digitsVal">
       </div>
 
       <div class="field">
-        <label>Numbers per problem <span class="val" id="termsVal">2</span></label>
-        <input type="range" id="terms" min="2" max="5" step="1" value="2">
+        <label for="terms">Numbers per problem <span class="val" id="termsVal">2</span></label>
+        <input type="range" id="terms" min="2" max="5" step="1" value="2" aria-describedby="termsVal">
       </div>
 
-      <div class="field">
-        <label>Session type</label>
-        <div class="seg" id="modeSeg">
-          <button data-mode="count" class="on">Fixed count</button>
-          <button data-mode="time">Beat the clock</button>
-          <button data-mode="zen">Zen ∞</button>
+      <div class="field" role="group" aria-labelledby="modeLabel">
+        <label id="modeLabel">Session type</label>
+        <div class="seg" id="modeSeg" role="radiogroup" aria-labelledby="modeLabel">
+          <button type="button" data-mode="count" class="on" role="radio" aria-checked="true">Fixed count</button>
+          <button type="button" data-mode="time" role="radio" aria-checked="false">Beat the clock</button>
+          <button type="button" data-mode="zen" role="radio" aria-checked="false">Zen ∞</button>
         </div>
       </div>
 
       <div class="rowtwo">
         <div class="field" id="countField">
-          <label>Questions <span class="val" id="countVal">20</span></label>
-          <input type="range" id="count" min="5" max="100" step="5" value="20">
+          <label for="count">Questions <span class="val" id="countVal">20</span></label>
+          <input type="range" id="count" min="5" max="100" step="5" value="20" aria-describedby="countVal">
         </div>
         <div class="field">
-          <label>Time / Q <span class="val" id="perqVal">Off</span></label>
-          <input type="range" id="perq" min="0" max="30" step="1" value="0">
+          <label for="perq">Time / Q <span class="val" id="perqVal">Off</span></label>
+          <input type="range" id="perq" min="0" max="30" step="1" value="0" aria-describedby="perqVal">
         </div>
       </div>
 
       <div class="field" id="sessionTimeField" style="display:none">
-        <label>Session length <span class="val" id="sessTimeVal">60s</span></label>
-        <input type="range" id="sessTime" min="15" max="300" step="15" value="60">
+        <label for="sessTime">Session length <span class="val" id="sessTimeVal">60s</span></label>
+        <input type="range" id="sessTime" min="15" max="300" step="15" value="60" aria-describedby="sessTimeVal">
       </div>
 
       <div class="toggle">
-        <div><b>Negative results</b><small>Allow answers below zero</small></div>
-        <label class="sw"><input type="checkbox" id="tNeg"><span></span></label>
+        <div id="lNeg"><b>Negative results</b><small>Allow answers below zero</small></div>
+        <label class="sw"><input type="checkbox" id="tNeg" aria-labelledby="lNeg"><span aria-hidden="true"></span></label>
       </div>
       <div class="toggle">
-        <div><b>Clean division</b><small>Always divides evenly (no remainders)</small></div>
-        <label class="sw"><input type="checkbox" id="tClean" checked><span></span></label>
+        <div id="lClean"><b>Clean division</b><small>Always divides evenly (no remainders)</small></div>
+        <label class="sw"><input type="checkbox" id="tClean" checked aria-labelledby="lClean"><span aria-hidden="true"></span></label>
       </div>
       <div class="toggle">
-        <div><b>Show hints</b><small>Reveal strategy on wrong answers</small></div>
-        <label class="sw"><input type="checkbox" id="tHint" checked><span></span></label>
+        <div id="lHint"><b>Show hints</b><small>Reveal strategy on wrong answers</small></div>
+        <label class="sw"><input type="checkbox" id="tHint" checked aria-labelledby="lHint"><span aria-hidden="true"></span></label>
       </div>
       <div class="toggle">
-        <div><b>Adaptive difficulty</b><small>Auto-tune to your accuracy live</small></div>
-        <label class="sw"><input type="checkbox" id="tAdapt"><span></span></label>
+        <div id="lAdapt"><b>Adaptive difficulty</b><small>Auto-tune to your accuracy live</small></div>
+        <label class="sw"><input type="checkbox" id="tAdapt" aria-labelledby="lAdapt"><span aria-hidden="true"></span></label>
       </div>
       <div class="toggle" style="border-bottom:1px solid var(--line)">
-        <div><b>On-screen keypad</b><small>Great for phones</small></div>
-        <label class="sw"><input type="checkbox" id="tKeypad"><span></span></label>
+        <div id="lKeypad"><b>On-screen keypad</b><small>Great for phones</small></div>
+        <label class="sw"><input type="checkbox" id="tKeypad" aria-labelledby="lKeypad"><span aria-hidden="true"></span></label>
       </div>
 
       <div style="margin-top:18px">
-        <button class="btn" id="btnStart">▶  Start session</button>
+        <button class="btn" id="btnStart"><span aria-hidden="true">▶</span>  Start session</button>
       </div>
     </section>
 
     <!-- ============ STAGE ============ -->
-    <section class="card stage">
+    <section class="card stage" id="stage" aria-label="Practice area">
       <div class="stage-head">
-        <div class="metrics">
+        <div class="metrics" role="group" aria-label="Live session metrics">
           <div class="metric"><div class="n" id="mScore">0</div><div class="l">Score</div></div>
           <div class="metric streak"><div class="n" id="mStreak">0</div><div class="l">Streak</div></div>
           <div class="metric good"><div class="n" id="mAcc">—</div><div class="l">Accuracy</div></div>
           <div class="metric"><div class="n" id="mTime">0s</div><div class="l">Elapsed</div></div>
         </div>
-        <div class="spark" id="spark" title="Recent answer speed"></div>
+        <div class="spark" id="spark" aria-hidden="true"></div>
       </div>
-      <div class="timerbar" id="qbar"><i id="qbarFill"></i></div>
+      <div class="timerbar" id="qbar" role="timer" aria-hidden="true"><i id="qbarFill"></i></div>
 
       <!-- idle -->
       <div class="play" id="idleView">
@@ -341,13 +356,19 @@
       <!-- playing -->
       <div class="play hidden" id="playView">
         <div class="qcount" id="qCount">Question 1</div>
-        <div class="problem" id="problem"><span class="q">7 × 8</span></div>
+        <div class="problem" id="problem" aria-hidden="true"><span class="q">7 × 8</span></div>
         <div class="answer-wrap">
-          <input class="answer" id="answer" inputmode="numeric" autocomplete="off" placeholder="?">
+          <label for="answer" class="sr-only" id="answerLabel">Your answer</label>
+          <input class="answer" id="answer" type="text" inputmode="numeric" autocomplete="off"
+                 placeholder="?" aria-labelledby="answerLabel" aria-describedby="problemSR">
         </div>
-        <div class="hintline" id="hint"></div>
-        <div class="keypad hidden" id="keypad"></div>
+        <div class="hintline" id="hint" aria-hidden="true"></div>
+        <div class="keypad hidden" id="keypad" role="group" aria-label="Number keypad"></div>
       </div>
+
+      <!-- screen-reader-only live announcements -->
+      <p class="sr-only" id="problemSR" aria-live="polite"></p>
+      <p class="sr-only" id="srStatus" role="status" aria-live="polite"></p>
 
       <!-- results -->
       <div class="results hidden" id="resultView"></div>
@@ -361,14 +382,14 @@
 </div>
 
 <!-- toast + fx -->
-<div class="toast" id="toast"></div>
-<canvas class="fx hidden" id="fx"></canvas>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<canvas class="fx hidden" id="fx" aria-hidden="true"></canvas>
 
 <!-- presets modal -->
 <div class="modal-bg" id="presetModal">
-  <div class="card modal"><div class="pad">
+  <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="presetH"><div class="pad">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>⚡ Quick presets</h2><button class="close-x" data-close>✕</button>
+      <h2 id="presetH"><span aria-hidden="true">⚡</span> Quick presets</h2><button class="close-x" data-close aria-label="Close presets dialog">✕</button>
     </div>
     <p style="color:var(--muted);margin-top:0">One tap loads a full configuration. Tweak afterwards freely.</p>
     <div class="preset-grid" id="presetGrid"></div>
@@ -377,9 +398,9 @@
 
 <!-- stats modal -->
 <div class="modal-bg" id="statsModal">
-  <div class="card modal"><div class="pad">
+  <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="statsH"><div class="pad">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>📊 Your progress</h2><button class="close-x" data-close>✕</button>
+      <h2 id="statsH"><span aria-hidden="true">📊</span> Your progress</h2><button class="close-x" data-close aria-label="Close progress dialog">✕</button>
     </div>
     <div id="statsBody"></div>
     <div class="review" style="margin-top:16px">
@@ -414,9 +435,19 @@ const opNames={add:'+',sub:'−',mul:'×',div:'÷'};
 const diffNames=['','Rookie','Easy','Medium','Hard','Expert','Insane'];
 
 /* ---------------- settings UI wiring ---------------- */
+// convert a written problem ("7 × 8") to spoken words for screen readers
+function speakMath(text){
+  return text.replace(/×/g,' times ').replace(/÷/g,' divided by ')
+             .replace(/−/g,' minus ').replace(/-/g,' minus ').replace(/\+/g,' plus ')
+             .replace(/\s+/g,' ').trim();
+}
+function announce(msg){ const el=$('srStatus'); if(el){ el.textContent=''; requestAnimationFrame(()=>el.textContent=msg); } }
+
 function paintOps(){
   document.querySelectorAll('#ops .op').forEach(el=>{
-    el.classList.toggle('on', cfg.ops.includes(el.dataset.op));
+    const on=cfg.ops.includes(el.dataset.op);
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-pressed', on?'true':'false');
   });
   const names={add:'Add',sub:'Sub',mul:'Mult',div:'Div'};
   $('opsVal').textContent = cfg.ops.length===4?'Mixed':(cfg.ops.length===0?'Pick one':cfg.ops.map(o=>names[o]).join(' + '));
@@ -455,7 +486,11 @@ bindRange('perq','perq',()=>{$('perqVal').textContent=cfg.perq===0?'Off':cfg.per
 bindRange('sessTime','sessTime',()=>{$('sessTimeVal').textContent=cfg.sessTime+'s'});
 
 function paintMode(){
-  document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===cfg.mode));
+  document.querySelectorAll('#modeSeg button').forEach(b=>{
+    const on=b.dataset.mode===cfg.mode;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-checked',on?'true':'false');
+  });
   $('sessionTimeField').style.display = cfg.mode==='time'?'block':'none';
   $('countField').style.opacity = cfg.mode==='count'?'1':'.45';
 }
@@ -568,9 +603,9 @@ function buildKeypad(){
   kp.innerHTML='';
   keys.forEach(k=>{
     const b=document.createElement('button');
-    b.textContent=k;
-    if(k==='⌫')b.className='del';
-    if(k==='±')b.className='';
+    b.textContent=k; b.type='button';
+    if(k==='⌫'){b.className='del';b.setAttribute('aria-label','Delete last digit');}
+    if(k==='±')b.setAttribute('aria-label','Toggle negative sign');
     b.onclick=()=>{
       const a=$('answer');
       if(k==='⌫')a.value=a.value.slice(0,-1);
@@ -581,7 +616,8 @@ function buildKeypad(){
     kp.appendChild(b);
   });
   const go=document.createElement('button');
-  go.textContent='Enter ⏎'; go.className='act'; go.style.gridColumn='span 3';
+  go.textContent='Enter ⏎'; go.type='button'; go.className='act'; go.style.gridColumn='span 3';
+  go.setAttribute('aria-label','Submit answer');
   go.onclick=submit; kp.appendChild(go);
   kp.dataset.built='1';
 }
@@ -614,6 +650,8 @@ function nextQ(){
   S.cur=makeProblem(); S.i++;
   $('qCount').textContent = cfg.mode==='count'?`Question ${S.i} / ${cfg.count}`:`Question ${S.i}`;
   $('problem').innerHTML=`<span class="q">${S.cur.text}</span>`;
+  const qn = cfg.mode==='count'?`Question ${S.i} of ${cfg.count}. `:`Question ${S.i}. `;
+  $('problemSR').textContent = qn + 'What is ' + speakMath(S.cur.text) + '?';
   const a=$('answer'); a.value=''; a.className='answer'; a.focus();
   $('hint').textContent=''; $('hint').className='hintline';
   S.qStart=Date.now();
@@ -665,11 +703,13 @@ function grade(ok,val,timedOut){
     S.score+=gained;
     a.className='answer ok';
     if(cfg.hint){$('hint').className='hintline good';$('hint').textContent=`✓ +${gained}${S.streak>2?'  🔥 '+S.streak+' streak!':''}`;}
+    announce(`Correct. Plus ${gained} points.${S.streak>2?' '+S.streak+' in a row.':''}`);
     beep(660,0.06); if(S.streak>0&&S.streak%5===0){confetti();beep(880,0.08);}
   }else{
     S.streak=0;
     a.className='answer no';
     if(cfg.hint){$('hint').className='hintline bad';$('hint').textContent=(timedOut?'⏱ Time! ':'✗ ')+`Answer: ${S.cur.ans}. ${hintFor(S.cur)}`;}
+    announce((timedOut?'Time up. ':'Incorrect. ')+`The answer was ${S.cur.ans}. `+(cfg.hint?hintFor(S.cur):''));
     beep(180,0.12,'square');
   }
   updateMetrics(); pushSpark(dt,ok);
@@ -746,7 +786,9 @@ function renderResults({reason,acc,avg,fastest,elapsed,newBadges}){
     </div>`:`<div class="review"><h3>Flawless run — nothing to review 🎯</h3></div>`}
   `;
   $('btnAgain').onclick=start;
-  $('btnBack').onclick=()=>{view('idle');renderIdleBadges();};
+  $('btnBack').onclick=()=>{view('idle');renderIdleBadges();$('btnStart').focus();};
+  announce(`Session complete. Grade ${grade[0]}. ${acc} percent accuracy. ${S.correct} of ${S.answered} correct. Score ${S.score}.`);
+  setTimeout(()=>$('btnAgain').focus(),120);
 }
 
 function quit(){
@@ -793,12 +835,13 @@ const PRESETS=[
 function openPresets(){
   const g=$('presetGrid'); g.innerHTML='';
   PRESETS.forEach(([t,d,patch])=>{
-    const el=document.createElement('div'); el.className='preset';
+    const el=document.createElement('button'); el.type='button'; el.className='preset';
     el.innerHTML=`<div class="pt">${t}</div><div class="pd">${d}</div>`;
-    el.onclick=()=>{ cfg={...cfg,...patch}; syncAllUI(); persist(); closeModals(); toast(`Loaded “${t}”`); };
+    el.setAttribute('aria-label',`${t}. ${d}`);
+    el.onclick=()=>{ cfg={...cfg,...patch}; syncAllUI(); persist(); closeModals(); toast(`Loaded “${t}”`); announce(`Loaded ${t} preset.`); };
     g.appendChild(el);
   });
-  $('presetModal').classList.add('show');
+  openModal($('presetModal'));
 }
 
 /* ---------------- stats modal ---------------- */
@@ -819,14 +862,14 @@ function openStats(){
     ${opRow}`;
   const ab=$('allBadges');
   ab.innerHTML=BADGES.map(([n,d])=>`<span class="badge ${ST.badges.includes(n)?'earned':''}" title="${d}">${ST.badges.includes(n)?'🏆':'🔒'} ${n}</span>`).join('');
-  $('statsModal').classList.add('show');
+  openModal($('statsModal'));
 }
 $('btnReset').onclick=()=>{ if(confirm('Erase all stats and achievements? This cannot be undone.')){ST=freshStats();persist();openStats();renderIdleBadges();toast('Stats reset');} };
 
 /* ---------------- theme / sound ---------------- */
-function applyTheme(){ document.documentElement.setAttribute('data-theme',cfg.theme==='light'?'light':'dark'); $('btnTheme').innerHTML=(cfg.theme==='light'?'☀️':'🌙')+' <span>Theme</span>'; }
+function applyTheme(){ document.documentElement.setAttribute('data-theme',cfg.theme==='light'?'light':'dark'); $('btnTheme').innerHTML='<span aria-hidden="true">'+(cfg.theme==='light'?'☀️':'🌙')+'</span> <span>Theme</span>'; $('btnTheme').setAttribute('aria-pressed',cfg.theme==='light'?'true':'false'); $('btnTheme').setAttribute('aria-label',cfg.theme==='light'?'Switch to dark theme':'Switch to light theme'); }
 $('btnTheme').onclick=()=>{cfg.theme=cfg.theme==='light'?'dark':'light';applyTheme();persist();};
-function syncSoundBtn(){$('btnSound').innerHTML=(cfg.sound?'🔊':'🔇')+' <span>Sound</span>';}
+function syncSoundBtn(){$('btnSound').innerHTML='<span aria-hidden="true">'+(cfg.sound?'🔊':'🔇')+'</span> <span>Sound</span>';$('btnSound').setAttribute('aria-pressed',cfg.sound?'true':'false');$('btnSound').setAttribute('aria-label',cfg.sound?'Sound on. Turn off':'Sound off. Turn on');}
 $('btnSound').onclick=()=>{cfg.sound=!cfg.sound;syncSoundBtn();persist();if(cfg.sound)beep(660,.06);};
 
 let AC=null;
@@ -846,7 +889,9 @@ function beep(freq,dur=0.07,type='sine'){
 const fx=$('fx'),fxc=fx.getContext('2d'); let parts=[],fxRun=false;
 function sizeFx(){fx.width=innerWidth;fx.height=innerHeight;}
 addEventListener('resize',sizeFx);sizeFx();
+const reduceMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function confetti(big=false){
+  if(reduceMotion)return;
   fx.classList.remove('hidden'); sizeFx();
   const colors=['#6ea8fe','#8b7bff','#37d67a','#ffcf5c','#22d3ee','#ff6b6b'];
   const n=big?160:60;
@@ -869,10 +914,29 @@ function stepFx(){
 let toastT;
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1900);}
 
-/* ---------------- modal plumbing ---------------- */
-function closeModals(){document.querySelectorAll('.modal-bg').forEach(m=>m.classList.remove('show'));}
+/* ---------------- modal plumbing (accessible) ---------------- */
+let lastFocus=null, openModalEl=null;
+function focusables(root){return [...root.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')].filter(el=>!el.disabled&&el.offsetParent!==null);}
+function openModal(m){
+  lastFocus=document.activeElement; openModalEl=m;
+  m.classList.add('show');
+  const f=focusables(m); (f[0]||m.querySelector('.modal')).focus();
+}
+function closeModals(){
+  document.querySelectorAll('.modal-bg').forEach(m=>m.classList.remove('show'));
+  openModalEl=null;
+  if(lastFocus&&lastFocus.focus){lastFocus.focus();lastFocus=null;}
+}
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeModals);
 document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{if(e.target===m)closeModals();});
+// focus trap
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Tab'||!openModalEl)return;
+  const f=focusables(openModalEl); if(!f.length)return;
+  const first=f[0],last=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
 $('btnPresets').onclick=openPresets;
 $('btnStats').onclick=openStats;
 $('btnStart').onclick=start;
