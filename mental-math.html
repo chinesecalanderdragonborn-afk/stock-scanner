@@ -226,6 +226,8 @@
   .hidden{display:none!important}
   .spark{display:flex;align-items:flex-end;gap:3px;height:34px}
   .spark i{width:7px;background:linear-gradient(180deg,var(--brand),var(--brand2));border-radius:3px 3px 0 0;transition:height .3s}
+  .trend{display:flex;align-items:flex-end;gap:5px;height:90px;padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .trend i{flex:1;min-width:6px;background:linear-gradient(180deg,var(--accent),var(--brand));border-radius:4px 4px 0 0;transition:height .3s}
 </style>
 </head>
 <body>
@@ -329,6 +331,10 @@
       <div style="margin-top:18px">
         <button class="btn" id="btnStart"><span aria-hidden="true">▶</span>  Start session</button>
       </div>
+      <div class="rowtwo" style="margin-top:10px">
+        <button class="btn ghost small" id="btnDaily"><span aria-hidden="true">🗓</span> Daily <span id="dailyBadge" class="sr-only">challenge</span></button>
+        <button class="btn ghost small" id="btnReview"><span aria-hidden="true">🎯</span> Weak Spots <span id="reviewCount" class="k"></span></button>
+      </div>
     </section>
 
     <!-- ============ STAGE ============ -->
@@ -407,8 +413,10 @@
       <h3>Achievements</h3>
       <div class="badges" id="allBadges"></div>
     </div>
-    <div style="margin-top:18px;display:flex;gap:10px">
-      <button class="btn ghost small" id="btnReset">Reset all stats</button>
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn ghost small" id="btnExport" style="flex:1">⬇ Export data</button>
+      <button class="btn ghost small" id="btnImport" style="flex:1">⬆ Import data</button>
+      <button class="btn ghost small" id="btnReset" style="flex:1">Reset all stats</button>
     </div>
   </div></div>
 </div>
@@ -426,7 +434,9 @@ const defaults={
 let cfg=load();
 function load(){ try{return {...defaults,...JSON.parse(localStorage.getItem(LS)||'{}').cfg}}catch(e){return{...defaults}} }
 function stats(){ try{return JSON.parse(localStorage.getItem(LS)||'{}').stats||freshStats()}catch(e){return freshStats()} }
-function freshStats(){return{sessions:0,totalQ:0,totalCorrect:0,bestStreak:0,bestScore:0,fastest:null,timePlayed:0,byOp:{add:{c:0,t:0},sub:{c:0,t:0},mul:{c:0,t:0},div:{c:0,t:0}},badges:[],history:[]}}
+function freshStats(){return{sessions:0,totalQ:0,totalCorrect:0,bestStreak:0,bestScore:0,fastest:null,timePlayed:0,byOp:{add:{c:0,t:0},sub:{c:0,t:0},mul:{c:0,t:0},div:{c:0,t:0}},badges:[],history:[],mistakes:[],daily:{last:null,streak:0,best:0}}}
+// migrate older saves that predate newer fields
+function ensureStats(){ if(!ST.mistakes)ST.mistakes=[]; if(!ST.daily)ST.daily={last:null,streak:0,best:0}; }
 function persist(){ localStorage.setItem(LS,JSON.stringify({cfg,stats:ST})); }
 let ST=stats();
 
@@ -502,7 +512,12 @@ function bindToggle(id,key){ const el=$(id); el.checked=cfg[key]; el.onchange=()
 ['tNeg:neg','tClean:clean','tHint:hint','tAdapt:adapt','tKeypad:keypad'].forEach(p=>{const[a,b]=p.split(':');bindToggle(a,b);});
 
 /* ---------------- problem generation ---------------- */
-function randInt(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
+// swappable RNG so the Daily Challenge is deterministic per calendar day
+let RNG=Math.random;
+function mulberry32(seed){ let a=seed>>>0; return function(){ a|=0;a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function randInt(min,max){return Math.floor(RNG()*(max-min+1))+min;}
+function dateSeed(d=new Date()){ return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate(); }
+function todayKey(d=new Date()){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function digitRange(d){ // returns [min,max] for a given "digits index"
   const ranges={1:[1,9],2:[1,20],3:[10,99],4:[100,999],5:[1000,9999]};
   return ranges[d]||[1,9];
@@ -584,7 +599,7 @@ let S=null; // running session
 function newSession(){
   return {i:0,score:0,streak:0,correct:0,answered:0,startedAt:Date.now(),
     qStart:0,qTimer:null,sessTimer:null,tickTimer:null,cur:null,items:[],speeds:[],
-    liveDiff:cfg.diff, done:false};
+    liveDiff:cfg.diff, done:false, queue:null, special:null, total:null};
 }
 function view(which){
   $('idleView').classList.toggle('hidden',which!=='idle');
@@ -622,33 +637,66 @@ function buildKeypad(){
   kp.dataset.built='1';
 }
 
-function start(){
-  if(cfg.ops.length===0){toast('Pick at least one operation');return;}
-  S=newSession();
+function buildDailyQueue(){
+  const n=15; const q=[]; const prevRNG=RNG; RNG=mulberry32(dateSeed());
+  const saved={ops:cfg.ops,diff:cfg.diff,digits:cfg.digits,terms:cfg.terms,neg:cfg.neg,clean:cfg.clean};
+  Object.assign(cfg,{ops:['add','sub','mul','div'],diff:3,digits:2,terms:2,neg:false,clean:true});
+  for(let i=0;i<n;i++)q.push(makeProblem());
+  Object.assign(cfg,saved); RNG=prevRNG; return q;
+}
+function buildReviewQueue(){
+  ensureStats();
+  // spaced review: oldest-missed first, up to 15
+  return ST.mistakes.slice().sort((a,b)=>(a.due||0)-(b.due||0)).slice(0,15)
+    .map(m=>({op:m.op,text:m.text,ans:m.ans,_review:true}));
+}
+
+function start(kind){
+  ensureStats();
+  if(kind==='daily'){
+    if(ST.daily.last===todayKey()){ if(!confirm("You've done today's Daily Challenge. Play it again for practice? (It won't change your day streak.)"))return; }
+  }
+  if(kind==='review'){
+    const q=buildReviewQueue();
+    if(!q.length){toast('No mistakes logged yet — great job!');return;}
+  }
+  if(!kind && cfg.ops.length===0){toast('Pick at least one operation');return;}
+  S=newSession(); S.special=kind||null;
+  if(kind==='daily'){ S.queue=buildDailyQueue(); S.total=S.queue.length; }
+  else if(kind==='review'){ S.queue=buildReviewQueue(); S.total=S.queue.length; }
+  else if(cfg.mode==='count'){ S.total=cfg.count; }
   view('play'); syncKeypad();
   $('mScore').textContent='0';$('mStreak').textContent='0';$('mAcc').textContent='—';$('mTime').textContent='0s';
   $('spark').innerHTML='';
   S.tickTimer=setInterval(()=>{ $('mTime').textContent=Math.floor((Date.now()-S.startedAt)/1000)+'s'; },250);
-  if(cfg.mode==='time'){
+  if(!S.queue && cfg.mode==='time'){
     S.sessTimer=setTimeout(()=>finish('time'), cfg.sessTime*1000);
   }
+  const modeMsg = kind==='daily'?'Daily Challenge started.':kind==='review'?'Weak Spots review started.':'Session started.';
+  announce(modeMsg);
   nextQ();
   setTimeout(()=>$('answer').focus(),50);
 }
 
 function nextQ(){
   if(S.done)return;
-  if(cfg.mode==='count' && S.i>=cfg.count){return finish('count');}
-  if(cfg.adapt){ // nudge live difficulty by recent accuracy
-    const recentWrong=S.items.slice(-4).filter(x=>!x.ok).length;
-    if(S.answered>=4){
-      if(recentWrong===0 && S.liveDiff<6)S.liveDiff++;
-      else if(recentWrong>=3 && S.liveDiff>1)S.liveDiff--;
-      cfg.diff=S.liveDiff; $('diff').value=cfg.diff; refreshLabels();
+  if(S.queue){
+    if(S.i>=S.queue.length) return finish(S.special);
+    S.cur=S.queue[S.i]; S.i++;
+  }else{
+    if(cfg.mode==='count' && S.i>=cfg.count){return finish('count');}
+    if(cfg.adapt){ // nudge live difficulty by recent accuracy
+      const recentWrong=S.items.slice(-4).filter(x=>!x.ok).length;
+      if(S.answered>=4){
+        if(recentWrong===0 && S.liveDiff<6)S.liveDiff++;
+        else if(recentWrong>=3 && S.liveDiff>1)S.liveDiff--;
+        cfg.diff=S.liveDiff; $('diff').value=cfg.diff; refreshLabels();
+      }
     }
+    S.cur=makeProblem(); S.i++;
   }
-  S.cur=makeProblem(); S.i++;
-  $('qCount').textContent = cfg.mode==='count'?`Question ${S.i} / ${cfg.count}`:`Question ${S.i}`;
+  const totalTxt = S.total?` / ${S.total}`:'';
+  $('qCount').textContent = (S.special==='daily'?'🗓 Daily · ':S.special==='review'?'🎯 Weak Spots · ':'')+`Question ${S.i}${totalTxt}`;
   $('problem').innerHTML=`<span class="q">${S.cur.text}</span>`;
   const qn = cfg.mode==='count'?`Question ${S.i} of ${cfg.count}. `:`Question ${S.i}. `;
   $('problemSR').textContent = qn + 'What is ' + speakMath(S.cur.text) + '?';
@@ -694,6 +742,18 @@ function grade(ok,val,timedOut){
   S.items.push({text:S.cur.text,ans:S.cur.ans,your:timedOut?'—':val,ok,dt,op:S.cur.op});
   // op stats
   if(S.cur.op && ST.byOp[S.cur.op]){ST.byOp[S.cur.op].t++; if(ok)ST.byOp[S.cur.op].c++;}
+  // mistake bank (spaced review source)
+  ensureStats();
+  const mi=ST.mistakes.findIndex(m=>m.text===S.cur.text);
+  if(!ok){
+    if(mi>=0){ST.mistakes[mi].misses++;ST.mistakes[mi].due=Date.now();}
+    else{ST.mistakes.push({text:S.cur.text,ans:S.cur.ans,op:S.cur.op,misses:1,due:Date.now()}); }
+    if(ST.mistakes.length>60)ST.mistakes.sort((a,b)=>b.misses-a.misses),ST.mistakes.length=60;
+  }else if(mi>=0){
+    // got it right — if reviewing it, retire it; otherwise soften its priority
+    if(S.cur._review) ST.mistakes.splice(mi,1);
+    else { ST.mistakes[mi].misses--; if(ST.mistakes[mi].misses<=0)ST.mistakes.splice(mi,1); }
+  }
   const a=$('answer');
   if(ok){
     S.correct++; S.streak++;
@@ -747,6 +807,13 @@ function finish(reason){
   if(S.correct>0 && (ST.fastest===null||fastest<ST.fastest))ST.fastest=+fastest.toFixed(2);
   ST.history.push({t:Date.now(),score:S.score,acc,q:S.answered,ops:[...cfg.ops]});
   if(ST.history.length>50)ST.history=ST.history.slice(-50);
+  ensureStats();
+  if(S.special==='daily' && ST.daily.last!==todayKey()){
+    const yesterday=todayKey(new Date(Date.now()-86400000));
+    ST.daily.streak=(ST.daily.last===yesterday)?ST.daily.streak+1:1;
+    ST.daily.last=todayKey();
+    ST.daily.best=Math.max(ST.daily.best||0,ST.daily.streak);
+  }
   const newBadges=checkBadges({acc,score:S.score,avg,fastest,q:S.answered});
   persist();
 
@@ -785,8 +852,9 @@ function renderResults({reason,acc,avg,fastest,elapsed,newBadges}){
       ${wrong.slice(0,12).map(w=>`<div class="review-item"><span>${w.text} = <span class="right">${w.ans}</span></span><span class="yours">you: ${w.your}</span></div>`).join('')}
     </div>`:`<div class="review"><h3>Flawless run — nothing to review 🎯</h3></div>`}
   `;
-  $('btnAgain').onclick=start;
-  $('btnBack').onclick=()=>{view('idle');renderIdleBadges();$('btnStart').focus();};
+  const againKind=S.special;
+  $('btnAgain').onclick=()=>start(againKind||undefined);
+  $('btnBack').onclick=()=>{view('idle');renderIdleBadges();refreshModeButtons();$('btnStart').focus();};
   announce(`Session complete. Grade ${grade[0]}. ${acc} percent accuracy. ${S.correct} of ${S.answered} correct. Score ${S.score}.`);
   setTimeout(()=>$('btnAgain').focus(),120);
 }
@@ -850,6 +918,14 @@ function openStats(){
   const acc=ST.totalQ?Math.round(ST.totalCorrect/ST.totalQ*100):0;
   const mins=Math.round(ST.timePlayed/60);
   const opRow=Object.entries(ST.byOp).map(([k,v])=>`<div class="kv"><span>${({add:'Addition',sub:'Subtraction',mul:'Multiplication',div:'Division'})[k]} ${opNames[k]}</span><b>${v.t?Math.round(v.c/v.t*100):0}% <span style="color:var(--muted)">(${v.c}/${v.t})</span></b></div>`).join('');
+  ensureStats();
+  // accuracy trend chart from last sessions
+  const h=ST.history.slice(-16);
+  const trend = h.length>1 ? `
+    <h3 style="font-size:.8rem;text-transform:uppercase;color:var(--muted);margin:16px 0 6px">Accuracy trend · last ${h.length} sessions</h3>
+    <div class="trend" role="img" aria-label="Accuracy over your last ${h.length} sessions, ranging ${Math.min(...h.map(x=>x.acc))} to ${Math.max(...h.map(x=>x.acc))} percent">
+      ${h.map(x=>`<i style="height:${Math.max(4,x.acc)}%" title="${x.acc}%"></i>`).join('')}
+    </div>` : '';
   b.innerHTML=`
     <div class="kv"><span>Sessions played</span><b>${ST.sessions}</b></div>
     <div class="kv"><span>Questions answered</span><b>${ST.totalQ}</b></div>
@@ -857,14 +933,31 @@ function openStats(){
     <div class="kv"><span>Best streak</span><b>${ST.bestStreak}</b></div>
     <div class="kv"><span>Best score</span><b>${ST.bestScore}</b></div>
     <div class="kv"><span>Fastest answer</span><b>${ST.fastest!==null?ST.fastest+'s':'—'}</b></div>
+    <div class="kv"><span>Daily streak</span><b>🔥 ${ST.daily.streak} <span style="color:var(--muted)">(best ${ST.daily.best||0})</span></b></div>
+    <div class="kv"><span>Problems to review</span><b>${ST.mistakes.length}</b></div>
     <div class="kv"><span>Time trained</span><b>${mins} min</b></div>
+    ${trend}
     <h3 style="font-size:.8rem;text-transform:uppercase;color:var(--muted);margin:16px 0 4px">By operation</h3>
     ${opRow}`;
   const ab=$('allBadges');
   ab.innerHTML=BADGES.map(([n,d])=>`<span class="badge ${ST.badges.includes(n)?'earned':''}" title="${d}">${ST.badges.includes(n)?'🏆':'🔒'} ${n}</span>`).join('');
   openModal($('statsModal'));
 }
-$('btnReset').onclick=()=>{ if(confirm('Erase all stats and achievements? This cannot be undone.')){ST=freshStats();persist();openStats();renderIdleBadges();toast('Stats reset');} };
+$('btnReset').onclick=()=>{ if(confirm('Erase all stats and achievements? This cannot be undone.')){ST=freshStats();persist();openStats();renderIdleBadges();refreshModeButtons();toast('Stats reset');} };
+$('btnExport').onclick=async()=>{
+  const data=JSON.stringify({cfg,stats:ST});
+  try{ await navigator.clipboard.writeText(data); toast('Progress copied to clipboard'); }
+  catch(e){ window.prompt('Copy your progress data:',data); }
+};
+$('btnImport').onclick=()=>{
+  const raw=window.prompt('Paste your exported progress data:');
+  if(!raw)return;
+  try{ const o=JSON.parse(raw);
+    if(o.stats)ST={...freshStats(),...o.stats};
+    if(o.cfg)cfg={...defaults,...o.cfg};
+    ensureStats(); persist(); syncAllUI(); openStats(); toast('Progress imported');
+  }catch(e){ toast('Import failed — invalid data'); }
+};
 
 /* ---------------- theme / sound ---------------- */
 function applyTheme(){ document.documentElement.setAttribute('data-theme',cfg.theme==='light'?'light':'dark'); $('btnTheme').innerHTML='<span aria-hidden="true">'+(cfg.theme==='light'?'☀️':'🌙')+'</span> <span>Theme</span>'; $('btnTheme').setAttribute('aria-pressed',cfg.theme==='light'?'true':'false'); $('btnTheme').setAttribute('aria-label',cfg.theme==='light'?'Switch to dark theme':'Switch to light theme'); }
@@ -939,7 +1032,19 @@ document.addEventListener('keydown',e=>{
 });
 $('btnPresets').onclick=openPresets;
 $('btnStats').onclick=openStats;
-$('btnStart').onclick=start;
+$('btnStart').onclick=()=>start();
+$('btnDaily').onclick=()=>start('daily');
+$('btnReview').onclick=()=>start('review');
+function refreshModeButtons(){
+  ensureStats();
+  const done=ST.daily.last===todayKey();
+  $('btnDaily').innerHTML=`<span aria-hidden="true">🗓</span> Daily${ST.daily.streak>0?' 🔥'+ST.daily.streak:''}${done?' ✓':''}`;
+  $('btnDaily').setAttribute('aria-label',`Daily Challenge.${done?' Completed today.':''}${ST.daily.streak>0?' Day streak '+ST.daily.streak+'.':''}`);
+  const n=ST.mistakes.length;
+  $('btnReview').innerHTML=`<span aria-hidden="true">🎯</span> Weak Spots${n?' ('+n+')':''}`;
+  $('btnReview').disabled=!n; $('btnReview').style.opacity=n?'1':'.5';
+  $('btnReview').setAttribute('aria-label',n?`Review ${n} problems you have missed`:'Weak Spots review. No mistakes logged yet.');
+}
 
 /* ---------------- keyboard ---------------- */
 document.addEventListener('keydown',e=>{
@@ -956,7 +1061,7 @@ function syncAllUI(){
   ['diff','digits','terms','count','perq','sessTime'].forEach(k=>{const el=$(k);if(el)el.value=cfg[k];});
   $('tNeg').checked=cfg.neg;$('tClean').checked=cfg.clean;$('tHint').checked=cfg.hint;
   $('tAdapt').checked=cfg.adapt;$('tKeypad').checked=cfg.keypad;
-  applyTheme(); syncSoundBtn(); renderIdleBadges();
+  applyTheme(); syncSoundBtn(); renderIdleBadges(); refreshModeButtons();
 }
 syncAllUI();
 view('idle');
