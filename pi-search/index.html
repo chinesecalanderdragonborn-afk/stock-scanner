@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi Search</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0d12; --panel: #12151d; --line: #222837; --text: #e7e9ee; --muted: #8b93a7;
+    --accent: #f5b544; --accent-ink: #1a1305; --hit: rgba(245,181,68,.22); --good: #5fd1a0; --bad: #ff7a7a;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f7f6f2; --panel: #ffffff; --line: #e3e0d8; --text: #1b1d23; --muted: #6a7080;
+            --accent: #c47f00; --accent-ink: #fff; --hit: rgba(196,127,0,.16); --good: #138a5b; --bad: #c43c3c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.5; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px 64px; }
+
+  /* backdrop of streaming digits */
+  .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+  .stream { position: absolute; inset: 0; font: 13px/1.6 var(--mono); color: var(--muted); opacity: .13;
+            word-break: break-all; padding: 8px; pointer-events: none; user-select: none; }
+  .hero-inner { position: relative; max-width: 960px; margin: 0 auto; padding: 56px 16px 40px; text-align: center; }
+  .pi { font: 600 88px/1 var(--mono); color: var(--accent); }
+  h1 { font-size: clamp(26px, 5vw, 40px); margin: 12px 0 4px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  form { display: flex; gap: 8px; max-width: 620px; margin: 0 auto; }
+  input[type=text], input[type=number] {
+    flex: 1; min-width: 0; font: 600 22px var(--mono); letter-spacing: .08em; padding: 14px 16px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; outline: none; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--hit); }
+  button { font: 600 15px var(--sans); border: 0; border-radius: 12px; padding: 0 22px; cursor: pointer;
+           background: var(--accent); color: var(--accent-ink); }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 8px 14px; }
+  button:disabled { opacity: .4; cursor: default; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+  .chip { font: 13px var(--sans); background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+          padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+
+  section { margin-top: 32px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin: 0 0 14px; font-weight: 500; }
+
+  .headline { font-size: clamp(20px, 3.4vw, 28px); font-weight: 700; margin: 0; }
+  .headline .num { font-family: var(--mono); color: var(--accent); }
+  .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 18px 0; }
+  .meta div { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .meta b { display: block; font: 600 18px var(--mono); }
+  .meta span { font-size: 12px; color: var(--muted); }
+  .context { font: 18px/1.9 var(--mono); word-break: break-all; padding: 14px 16px; border-radius: 12px;
+             background: var(--bg); border: 1px solid var(--line); }
+  .context .dim { color: var(--muted); }
+  mark { background: var(--accent); color: var(--accent-ink); border-radius: 4px; padding: 1px 2px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  .error { color: var(--bad); }
+  .hidden { display: none; }
+
+  .grid { font: 15px/1.9 var(--mono); overflow-x: auto; }
+  .grid .line { display: flex; gap: 14px; white-space: nowrap; }
+  .grid .pos { color: var(--muted); min-width: 11ch; text-align: right; font-size: 12px; padding-top: 2px; }
+  .grid .grp { letter-spacing: .04em; }
+  .grid .hl { background: var(--hit); color: var(--accent); border-radius: 3px; }
+  .jump { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .jump input { font-size: 16px; padding: 8px 12px; flex: 0 1 240px; letter-spacing: 0; }
+
+  .bars { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; align-items: end; height: 160px; }
+  .bar { min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+  .bar i { display: block; width: 100%; background: var(--accent); border-radius: 6px 6px 0 0; opacity: .85; }
+  .bar b { font: 600 15px var(--mono); margin-top: 6px; }
+  .bar small { font: 11px var(--mono); color: var(--muted); }
+  .note { color: var(--muted); font-size: 14px; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 48px; }
+  @media (max-width: 560px) {
+    .pi { font-size: 64px; } form { flex-direction: column; } button[type=submit] { padding: 12px; }
+    .grid .pos { min-width: 9ch; } .grid { font-size: 13px; }
+    .bars { gap: 4px; } .bar small { display: none; }
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="stream" id="stream"></div>
+  <div class="hero-inner">
+    <div class="pi">π</div>
+    <h1>Find any number in pi</h1>
+    <p class="sub">Searching the first <b id="total">billion</b> decimal digits of 3.14159…</p>
+    <form id="form" autocomplete="off">
+      <input id="q" type="text" inputmode="numeric" placeholder="e.g. your birthday 071495" aria-label="Digits to find">
+      <button type="submit">Search</button>
+    </form>
+    <div class="chips" id="chips">
+      <span class="chip" data-q="999999">Feynman point · 999999</span>
+      <span class="chip" data-q="123456789">123456789</span>
+      <span class="chip" data-q="0123456789">0123456789</span>
+      <span class="chip" data-q="314159">314159</span>
+      <span class="chip" data-q="271828">e · 271828</span>
+      <span class="chip" data-q="8675309">Jenny · 8675309</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="result" class="hidden">
+    <div class="card">
+      <h2>Result</h2>
+      <div id="result-body"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Digit explorer</h2>
+      <div class="jump">
+        <input id="jump" type="number" min="0" placeholder="Go to decimal place…" aria-label="Decimal place">
+        <button class="ghost" id="go">Go</button>
+        <button class="ghost" id="prev">← Previous 1,000</button>
+        <button class="ghost" id="next">Next 1,000 →</button>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>How often each digit appears</h2>
+      <div class="bars" id="bars"><p class="note">Counting every digit… (takes a few seconds the first time)</p></div>
+      <p class="note" id="bars-note"></p>
+    </div>
+  </section>
+
+  <footer>Position 1 is the first digit after the decimal point (the “1” in 3.1415…). Position 0 is the leading 3.</footer>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => Number(n).toLocaleString("en-US");
+let TOTAL = 0, current = null, explorerStart = 1, highlight = null;
+
+async function api(path) {
+  const r = await fetch(path);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "Request failed");
+  return j;
+}
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return fmt(n) + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+// ---------- search ----------
+async function search(q, opts = {}) {
+  q = (q || "").replace(/\D/g, "");
+  if (!q) return;
+  $("#q").value = q;
+  if (location.hash !== "#" + q) history.replaceState(null, "", "#" + q);
+  const box = $("#result"), body = $("#result-body");
+  box.classList.remove("hidden");
+  if (!opts.keep) {
+    current = { q, n: 1, count: null };
+    body.innerHTML = `<p class="note">Searching ${fmt(TOTAL)} digits…</p>`;
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  let url = `/api/search?q=${q}`;
+  if (opts.after != null) url += `&after=${opts.after}`;
+  if (opts.before != null) url += `&before=${opts.before}`;
+  try {
+    const r = await api(url);
+    if (r.position == null) {
+      if (opts.keep) { current.atEnd = true; render(current.last); return; }
+      body.innerHTML = `<p class="headline">Not found in the first ${fmt(r.searched)} digits.</p>
+        <p class="note">A ${q.length}-digit string first shows up around position ${fmt(Math.pow(10, q.length))} on average,
+        so strings longer than about 9 digits often don't appear in the first billion. (${r.ms} ms)</p>`;
+      return;
+    }
+    current.last = r; current.atEnd = false;
+    render(r);
+    if (current.count == null) countAll(q);
+    showDigits(Math.max(1, Math.floor((r.position - 1) / 1000) * 1000 + 1), { pos: r.position, len: q.length });
+  } catch (e) {
+    body.innerHTML = `<p class="error">${e.message}</p>`;
+  }
+}
+
+function render(r) {
+  const q = r.query, c = r.context, rel = r.position - c.start;
+  const before = c.digits.slice(0, rel), hit = c.digits.slice(rel, rel + q.length), after = c.digits.slice(rel + q.length);
+  const beforeHtml = c.start === 0 ? before.replace(/^3/, "3.") : "…" + before;
+  const where = r.position === 0 ? "the very start (the leading 3)" : `decimal place <span class="num">${fmt(r.position)}</span>`;
+  const countTxt = current.count == null ? "counting…" : fmt(current.count);
+  $("#result-body").innerHTML = `
+    <p class="headline">“${q}” is at ${where}</p>
+    <div class="meta">
+      <div><b>${ordinal(current.n)}</b><span>occurrence shown</span></div>
+      <div><b id="count">${countTxt}</b><span>times in ${fmt(TOTAL)} digits</span></div>
+      <div><b>${r.ms} ms</b><span>search time</span></div>
+      <div><b>~${fmt(Math.pow(10, q.length))}</b><span>expected first position for ${q.length} digits</span></div>
+    </div>
+    <div class="context"><span class="dim">${beforeHtml}</span><mark>${hit}</mark><span class="dim">${after}…</span></div>
+    <div class="row">
+      <button class="ghost" id="prev-hit" ${current.n <= 1 ? "disabled" : ""}>← Previous occurrence</button>
+      <button class="ghost" id="next-hit" ${current.atEnd ? "disabled" : ""}>Next occurrence →</button>
+      <button class="ghost" id="copy">Copy link</button>
+      ${current.atEnd ? '<span class="note">No more occurrences.</span>' : ""}
+    </div>`;
+  $("#next-hit").onclick = () => { current.n++; search(q, { keep: true, after: r.position }); };
+  $("#prev-hit").onclick = () => { current.n--; search(q, { keep: true, before: r.position }); };
+  $("#copy").onclick = e => { navigator.clipboard?.writeText(location.href); e.target.textContent = "Copied!"; };
+}
+
+async function countAll(q) {
+  try {
+    const r = await api(`/api/count?q=${q}`);
+    if (current && current.q === q) {
+      current.count = r.count;
+      const el = $("#count"); if (el) el.textContent = fmt(r.count);
+    }
+  } catch (e) {}
+}
+
+// ---------- explorer ----------
+async function showDigits(start, hl = null) {
+  start = Math.max(1, Math.min(start, Math.max(1, TOTAL - 999)));
+  explorerStart = start; highlight = hl;
+  const r = await api(`/api/digits?start=${start}&len=1000`);
+  const d = r.digits;
+  let html = "";
+  for (let row = 0; row < d.length; row += 50) {
+    let groups = "";
+    for (let g = row; g < Math.min(row + 50, d.length); g += 10) {
+      let grp = "";
+      for (let i = g; i < Math.min(g + 10, d.length); i++) {
+        const p = start + i;
+        const on = hl && p >= hl.pos && p < hl.pos + hl.len;
+        grp += on ? `<span class="hl">${d[i]}</span>` : d[i];
+      }
+      groups += `<span class="grp">${grp}</span>`;
+    }
+    html += `<div class="line"><span class="pos">${fmt(start + row)}</span>${groups}</div>`;
+  }
+  $("#grid").innerHTML = html;
+  $("#prev").disabled = start <= 1;
+  $("#next").disabled = start + 1000 > TOTAL;
+}
+
+// ---------- stats ----------
+function drawStats(stats) {
+  const f = stats.frequency, total = f.reduce((a, b) => a + b, 0), max = Math.max(...f);
+  $("#bars").innerHTML = f.map((n, d) => `
+    <div class="bar" title="${fmt(n)} times">
+      <small>${(n / total * 100).toFixed(4)}%</small>
+      <i style="height:${Math.max(4, (n / max) * 120)}px"></i>
+      <b>${d}</b>
+    </div>`).join("");
+  const spread = ((max - Math.min(...f)) / total * 100).toFixed(4);
+  $("#bars-note").textContent = `Every digit shows up almost exactly 10% of the time — the biggest gap between any two digits is just ${spread} percentage points across ${fmt(total)} digits.`;
+}
+
+async function pollStats() {
+  const info = await api("/api/info");
+  if (info.stats) drawStats(info.stats); else setTimeout(pollStats, 1500);
+}
+
+// ---------- boot ----------
+$("#form").onsubmit = e => { e.preventDefault(); search($("#q").value); };
+$("#q").oninput = e => { e.target.value = e.target.value.replace(/\D/g, ""); };
+$("#chips").onclick = e => { if (e.target.dataset.q) search(e.target.dataset.q); };
+$("#go").onclick = () => { const v = parseInt($("#jump").value, 10); if (v >= 0) showDigits(v, { pos: v, len: 1 }); };
+$("#jump").onkeydown = e => { if (e.key === "Enter") $("#go").click(); };
+$("#prev").onclick = () => showDigits(explorerStart - 1000, highlight);
+$("#next").onclick = () => showDigits(explorerStart + 1000, highlight);
+
+(async () => {
+  const info = await api("/api/info");
+  TOTAL = info.digits;
+  $("#total").textContent = TOTAL >= 1e9 && TOTAL % 1e9 === 0 ? (TOTAL === 1e9 ? "billion" : fmt(TOTAL)) : fmt(TOTAL);
+  const head = await api("/api/digits?start=0&len=4000");
+  $("#stream").textContent = head.digits.replace(/^3/, "3.");
+  showDigits(1);
+  pollStats();
+  if (location.hash.length > 1) search(location.hash.slice(1));
+})();
+</script>
+</body>
+</html>
