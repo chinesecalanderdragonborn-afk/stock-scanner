@@ -31,6 +31,18 @@ needs about 8 GB of free RAM and 30–90 minutes. For a quick try with fewer dig
 PI_DIGITS_COUNT=10000000 python3 start.py      # 10 million digits, ready in ~10 s
 ```
 
+## Use it on your phone
+
+When Pi Search is running on your computer, the page shows an **"Open on your
+phone"** box with a QR code. Scan it with your phone's camera, or type the address
+shown (something like `http://192.168.1.23:8314`) into your phone's browser. The
+launcher window prints the same address.
+
+- Your phone has to be on the **same Wi-Fi** as the computer, and the computer has to stay on with Pi Search running.
+- The first time you start it, your computer may ask whether Python can accept network connections. Click **Allow**. On Windows, allow "Private networks".
+- To get an app-style icon, use **Share → Add to Home Screen** in Safari, or **⋮ → Add to Home screen** in Chrome.
+- To keep it to this computer only, start it with `PI_HOST=127.0.0.1`.
+
 ## How positions are counted
 
 Position **1** is the first digit after the decimal point, the `1` in 3.**1**415….
@@ -47,6 +59,7 @@ nearly every string of 8 digits or fewer is in the first billion, while many
 | `get_digits.py` | Downloads or computes the digits, checks them against known pi, and writes `data/pi_digits.txt` |
 | `server.py` | Small HTTP server using only the standard library. It memory-maps the digit file, so a search scans the billion digits at C speed without loading them into RAM |
 | `index.html` | The website (a single file) |
+| `qrcode.js` | [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 (MIT), draws the phone QR code offline |
 | `start.py` | One-command launcher |
 
 API: `/api/search?q=…[&after=pos|&before=pos]`, `/api/count?q=…`,

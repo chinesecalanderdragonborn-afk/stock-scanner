@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pi Search</title>
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pi Search">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b0d12'/><text x='50' y='72' font-size='70' text-anchor='middle' fill='%23f5b544' font-family='monospace'>π</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230b0d12'/><text x='50' y='72' font-size='70' text-anchor='middle' fill='%23f5b544' font-family='monospace'>π</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -75,6 +80,11 @@
   .bar b { font: 600 15px var(--mono); margin-top: 6px; }
   .bar small { font: 11px var(--mono); color: var(--muted); }
   .note { color: var(--muted); font-size: 14px; }
+  .phone { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .phone .qr { background: #fff; padding: 10px; border-radius: 12px; line-height: 0; }
+  .phone .qr svg { width: 148px; height: 148px; }
+  .phone p { margin: 0 0 6px; }
+  .phone code { font: 600 17px var(--mono); color: var(--accent); word-break: break-all; }
   footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 48px; }
   @media (max-width: 560px) {
     .pi { font-size: 64px; } form { flex-direction: column; } button[type=submit] { padding: 12px; }
@@ -131,6 +141,20 @@
       <h2>How often each digit appears</h2>
       <div class="bars" id="bars"><p class="note">Counting every digit… (takes a few seconds the first time)</p></div>
       <p class="note" id="bars-note"></p>
+    </div>
+  </section>
+
+  <section id="phone" class="hidden">
+    <div class="card">
+      <h2>Open on your phone</h2>
+      <div class="phone">
+        <div class="qr" id="qr"></div>
+        <div>
+          <p>Scan with your phone's camera, or type this address into its browser:</p>
+          <p><code id="phone-url"></code></p>
+          <p class="note">Your phone needs to be on the same Wi-Fi as this computer, and this computer has to stay on with Pi Search running.</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -267,6 +291,23 @@ async function pollStats() {
   if (info.stats) drawStats(info.stats); else setTimeout(pollStats, 1500);
 }
 
+// ---------- phone ----------
+function showPhone(url) {
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  if (!url || !local) return;  // already on the network address (e.g. on the phone)
+  $("#phone-url").textContent = url;
+  $("#phone").classList.remove("hidden");
+  const s = document.createElement("script");
+  s.src = "/qrcode.js";
+  s.onload = () => {
+    const qr = qrcode(0, "M");
+    qr.addData(url); qr.make();
+    $("#qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+  };
+  s.onerror = () => $("#qr").remove();  // the typed address still works
+  document.head.appendChild(s);
+}
+
 // ---------- boot ----------
 $("#form").onsubmit = e => { e.preventDefault(); search($("#q").value); };
 $("#q").oninput = e => { e.target.value = e.target.value.replace(/\D/g, ""); };
@@ -279,6 +320,7 @@ $("#next").onclick = () => showDigits(explorerStart + 1000, highlight);
 (async () => {
   const info = await api("/api/info");
   TOTAL = info.digits;
+  showPhone(info.phone_url);
   $("#total").textContent = TOTAL >= 1e9 && TOTAL % 1e9 === 0 ? (TOTAL === 1e9 ? "billion" : fmt(TOTAL)) : fmt(TOTAL);
   const head = await api("/api/digits?start=0&len=4000");
   $("#stream").textContent = head.digits.replace(/^3/, "3.");

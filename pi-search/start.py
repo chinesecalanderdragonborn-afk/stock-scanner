@@ -11,6 +11,7 @@ Run it with:   python start.py       (Windows)
 Environment overrides (optional):
   PI_DIGITS_COUNT=10000000   use fewer digits (much faster first run)
   PI_PORT=8314               change the port
+  PI_HOST=127.0.0.1          only allow this computer (no phone access)
 """
 from __future__ import annotations
 
@@ -45,6 +46,10 @@ def open_browser_when_ready() -> None:
     time.sleep(1.5)
     print(f"\n★ Opening Pi Search at {URL}")
     print("  (If it doesn't open automatically, paste that address into your browser.)")
+    import server
+    if server.PHONE_URL:
+        print(f"\n📱 On your phone: connect to the same Wi-Fi and open {server.PHONE_URL}")
+        print("  (or scan the QR code on the page).")
     print("  Press Ctrl+C in this window to stop.\n")
     try:
         webbrowser.open(URL)

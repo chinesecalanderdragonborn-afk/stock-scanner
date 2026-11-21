@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import mmap
 import os
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DIGITS_PATH = os.environ.get("PI_DIGITS", os.path.join(HERE, "data", "pi_digits.txt"))
 STATS_PATH = DIGITS_PATH + ".stats.json"
 INDEX_PATH = os.path.join(HERE, "index.html")
+QR_PATH = os.path.join(HERE, "qrcode.js")  # qrcode-generator 1.4.4 (MIT), for the phone QR code
 
 MAX_QUERY = 100
 MAX_SLICE = 20_000
@@ -113,6 +115,18 @@ class Pi:
 
 
 PI: Pi | None = None
+PHONE_URL: str | None = None
+
+
+def lan_address() -> str | None:
+    """This computer's address on the local Wi-Fi/Ethernet network, if any."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))  # no packet is sent; just picks the outbound interface
+            ip = s.getsockname()[0]
+    except OSError:
+        return None
+    return None if ip.startswith("127.") else ip
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -134,16 +148,17 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         params = {k: v[0] for k, v in parse_qs(url.query).items()}
         try:
-            if url.path in ("/", "/index.html"):
-                with open(INDEX_PATH, "rb") as fh:
+            if url.path in ("/", "/index.html", "/qrcode.js"):
+                is_js = url.path == "/qrcode.js"
+                with open(QR_PATH if is_js else INDEX_PATH, "rb") as fh:
                     body = fh.read()
                 self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Type", "text/javascript" if is_js else "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
             elif url.path == "/api/info":
-                self.send_json({"digits": PI.size, "stats": PI.stats})
+                self.send_json({"digits": PI.size, "stats": PI.stats, "phone_url": PHONE_URL})
             elif url.path == "/api/search":
                 self.search(params)
             elif url.path == "/api/count":
@@ -193,15 +208,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(payload)
 
 
-def main(port: int | None = None, host: str = "127.0.0.1") -> None:
-    global PI
+def main(port: int | None = None, host: str | None = None) -> None:
+    global PI, PHONE_URL
     if not os.path.exists(DIGITS_PATH):
         raise SystemExit("No digits yet — run:  python3 get_digits.py")
     PI = Pi(DIGITS_PATH)
     threading.Thread(target=PI.load_stats, daemon=True).start()
     port = port or int(os.environ.get("PI_PORT", "8314"))
+    # 0.0.0.0 listens on the local network too, so phones on the same Wi-Fi can
+    # connect. Set PI_HOST=127.0.0.1 to keep it to this computer only.
+    host = host or os.environ.get("PI_HOST", "0.0.0.0")
     httpd = ThreadingHTTPServer((host, port), Handler)
+    ip = lan_address() if host == "0.0.0.0" else None
+    PHONE_URL = f"http://{ip}:{port}" if ip else None
     print(f"  π  serving {PI.size:,} digits at http://localhost:{port}")
+    if PHONE_URL:
+        print(f"  📱 on your phone (same Wi-Fi): {PHONE_URL}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -209,4 +231,4 @@ def main(port: int | None = None, host: str = "127.0.0.1") -> None:
 
 
 if __name__ == "__main__":
-    main(host=os.environ.get("PI_HOST", "127.0.0.1"))
+    main()
